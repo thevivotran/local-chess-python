@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Chess - Play with Friends</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/chessboard-1.0.0.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Menu Container -->
+        <div id="menuContainer" class="menu-container">
+            <div class="menu">
+                <h1>♟ Local Chess ♟</h1>
+                <p class="subtitle">Play chess with friends on the same network</p>
+                
+                <div class="menu-content">
+                    <div class="menu-section">
+                        <h2>Create New Game</h2>
+                        <button id="createBtn" class="btn btn-primary" onclick="createGame()">Create Game</button>
+                        <p class="info-text">You'll get a Game ID to share with your friend</p>
+                    </div>
+                    
+                    <div class="divider">OR</div>
+                    
+                    <div class="menu-section">
+                        <h2>Join Existing Game</h2>
+                        <input type="text" id="joinGameId" class="input-field" placeholder="Enter Game ID">
+                        <button id="joinBtn" class="btn btn-secondary" onclick="joinGame()">Join Game</button>
+                        <p class="info-text">Ask your friend for the Game ID</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Game Container -->
+        <div id="gameContainer" class="game-container">
+            <div class="game-header">
+                <div class="game-info">
+                    <h1>♟ Local Chess</h1>
+                    <div class="player-info">
+                        <p>Game ID: <span id="gameId">-</span></p>
+                        <p>You are: <span id="playerColor">-</span></p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="game-content">
+                <div class="board-container">
+                    <div id="board"></div>
+                </div>
+                
+                <div class="game-panel">
+                    <div class="status-box">
+                        <p id="status" class="status">Connecting...</p>
+                    </div>
+                    
+                    <div class="moves-box">
+                        <h3>Moves</h3>
+                        <div id="moveHistory" class="move-history"></div>
+                    </div>
+                    
+                    <div class="controls">
+                        <button id="resetBtn" class="btn btn-danger" onclick="resetGame()" style="display: none;">
+                            New Game
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chessboard-1.0.0.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chess-lib.min.js') }}"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/chess.js') }}"></script>
+</body>
+</html>
