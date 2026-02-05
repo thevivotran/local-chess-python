@@ -50,7 +50,7 @@ python app.py
 
 2. The server will start on `http://0.0.0.0:5000` and be accessible from:
    - Local machine: `http://localhost:5000`
-   - Other machines on the network: `http://192.168.1.111:5000`
+   - Other machines on the network: `http://<your-machine-ip>:5000`
 
 3. Find your machine's local IP:
    - **Linux/Mac**: Run `ifconfig` and look for `inet` address (usually `192.168.x.x`)
