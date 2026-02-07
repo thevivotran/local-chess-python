@@ -203,6 +203,15 @@ body {
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 
+/* Make the game card shrink-wrap to its content (the board) while remaining responsive */
+.game-container {
+    display: inline-block;
+    width: auto;
+    max-width: calc(100% - 40px);
+    box-sizing: border-box;
+    vertical-align: top;
+}
+
 .game-header {
     text-align: center;
     padding-bottom: 20px;
@@ -245,12 +254,32 @@ body {
     align-items: center;
 }
 
+/* Ensure board container doesn't allow the board to overflow the card */
+.board-container {
+    width: 100%;
+}
+
 #board {
     width: 500px !important;
-    height: 500px !important;
+    max-width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 1;
     border-radius: 8px;
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
     background-color: #f0d9b5;
+    display: block;
+}
+
+/* Improve touch behavior on mobile/iOS */
+#board, .board-container {
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    user-select: none;
+    touch-action: none; /* prevent browser gesture interference while dragging pieces */
+}
+
+#board .square-55d63, #board .board { /* ensure pointers look correct */
+    cursor: grab;
 }
 
 .game-panel {
@@ -342,7 +371,6 @@ body {
     
     #board {
         width: 100% !important;
-        height: 100% !important;
         max-width: 400px;
         aspect-ratio: 1;
     }

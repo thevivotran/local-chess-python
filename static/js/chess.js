@@ -4,6 +4,8 @@ let gameId = null;
 let playerNumber = null;
 let playerColor = null;
 let board = null;
+let playerIndex = null; // 0 = white, 1 = black
+let currentPlayerTurn = 0; // server current_player: 0 = white, 1 = black
 
 // Initialize Chessboard.js
 function initializeBoard() {
@@ -27,6 +29,7 @@ function initializeBoard() {
     orientation: playerColor === 'white' ? 'white' : 'black',
     draggable: true,
     dropOffBoard: 'snapback',
+    onDragStart: onDragStart,
     onDrop: onDrop,
     pieceTheme: '/static/img/chesspieces/wikipedia/{piece}.png'
   };
@@ -37,11 +40,59 @@ function initializeBoard() {
   } catch (e) {
     console.error('Error initializing board:', e);
   }
+
+  // Prevent native touch gestures from interfering with piece drag on mobile/iOS
+  if (boardElement) {
+    // Allow touchstart/end to propagate; only prevent touchmove to avoid page scroll during drag
+    boardElement.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+  }
+  // Resize board after initialization (Chessboard.js sometimes measures while hidden)
+  setTimeout(() => {
+    try {
+      if (board && typeof board.resize === 'function') {
+        board.resize();
+      }
+    } catch (e) {
+      console.warn('Board resize failed', e);
+    }
+  }, 50);
+
+  // Keep board sized on window resize
+  window.addEventListener('resize', function() {
+    try {
+      if (board && typeof board.resize === 'function') board.resize();
+    } catch (e) {
+      console.warn('Board resize on window failed', e);
+    }
+  });
+}
+
+function isPlayersTurn() {
+  return (playerIndex !== null && currentPlayerTurn === playerIndex);
+}
+
+function onDragStart(source, piece, position, orientation) {
+  // Prevent dragging when it's not the player's turn
+  if (!isPlayersTurn()) {
+    return false;
+  }
+
+  // Only allow dragging of player's own pieces
+  if (!playerColor || !piece) return false;
+  const pieceColorChar = piece.charAt(0); // 'w' or 'b'
+  const expected = playerColor === 'white' ? 'w' : 'b';
+  if (pieceColorChar !== expected) return false;
+
+  return true;
 }
 
 let currentFEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 function onDrop(source, target) {
+  // Block moves if not player's turn
+  if (!isPlayersTurn()) {
+    return 'snapback';
+  }
   // Create a chess instance to validate
   const chessBoard = new Chess(currentFEN);
   const moveObj = chessBoard.move({
@@ -90,6 +141,7 @@ socket.on('game_created', function(data) {
   gameId = data.game_id;
   playerNumber = data.player_number;
   playerColor = data.color;
+  playerIndex = playerNumber - 1;
   
   console.log('Game created:', gameId);
   console.log('You are player', playerNumber, 'playing as', playerColor);
@@ -105,6 +157,7 @@ socket.on('game_joined', function(data) {
   gameId = data.game_id;
   playerNumber = data.player_number;
   playerColor = data.color;
+  playerIndex = playerNumber - 1;
   
   console.log('Game joined:', gameId);
   console.log('You are player', playerNumber, 'playing as', playerColor);
@@ -124,6 +177,8 @@ socket.on('game_joined', function(data) {
 socket.on('opponent_joined', function(data) {
   console.log('Opponent joined');
   document.getElementById('status').textContent = 'Game Started! White to move.';
+  // Set current player to white (0) when opponent joins
+  currentPlayerTurn = 0;
   
   if (!board) {
     setTimeout(function() {
@@ -138,18 +193,29 @@ socket.on('opponent_joined', function(data) {
 socket.on('move_made', function(data) {
   console.log('Move made:', data.move);
   updateBoard(data.board_fen);
-  
+
+  // Update who is to move
+  currentPlayerTurn = data.current_player;
+
   let status = '';
   if (data.is_checkmate) {
-    status = 'Checkmate! Game Over.';
+    const winnerIndex = 1 - data.current_player;
+    const winnerColor = winnerIndex === 0 ? 'White' : 'Black';
+    if (playerIndex === winnerIndex) {
+      status = `Checkmate! You won as ${winnerColor}.`;
+    } else {
+      status = `Checkmate! You lost — ${winnerColor} wins.`;
+    }
+    document.getElementById('resetBtn').style.display = 'block';
   } else if (data.is_stalemate) {
-    status = 'Stalemate! Game Over.';
+    status = 'Stalemate! Draw.';
+    document.getElementById('resetBtn').style.display = 'block';
   } else if (data.is_check) {
     status = 'Check! ' + (data.current_player === 0 ? 'White' : 'Black') + ' to move.';
   } else {
     status = (data.current_player === 0 ? 'White' : 'Black') + ' to move.';
   }
-  
+
   document.getElementById('status').textContent = status;
   document.getElementById('moveHistory').innerHTML += `<div>${data.move}</div>`;
 });
@@ -165,18 +231,28 @@ socket.on('board_state', function(data) {
   } else {
     updateBoard(data.board_fen);
   }
-  
+  // Update who is to move
+  currentPlayerTurn = data.current_player;
+
   let status = '';
   if (data.is_checkmate) {
-    status = 'Checkmate! Game Over.';
+    const winnerIndex = 1 - data.current_player;
+    const winnerColor = winnerIndex === 0 ? 'White' : 'Black';
+    if (playerIndex === winnerIndex) {
+      status = `Checkmate! You won as ${winnerColor}.`;
+    } else {
+      status = `Checkmate! You lost — ${winnerColor} wins.`;
+    }
+    document.getElementById('resetBtn').style.display = 'block';
   } else if (data.is_stalemate) {
-    status = 'Stalemate! Game Over.';
+    status = 'Stalemate! Draw.';
+    document.getElementById('resetBtn').style.display = 'block';
   } else if (data.is_check) {
     status = 'Check! ' + (data.current_player === 0 ? 'White' : 'Black') + ' to move.';
   } else {
     status = (data.current_player === 0 ? 'White' : 'Black') + ' to move.';
   }
-  
+
   document.getElementById('status').textContent = status;
   
   // Display move history
