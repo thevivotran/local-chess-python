@@ -18,6 +18,7 @@
                 <div class="menu-content">
                     <div class="menu-section">
                         <h2>Create New Game</h2>
+                        <input type="text" id="createUsername" class="input-field" placeholder="Your Username">
                         <button id="createBtn" class="btn btn-primary" onclick="createGame()">Create Game</button>
                         <p class="info-text">You'll get a Game ID to share with your friend</p>
                     </div>
@@ -26,9 +27,18 @@
                     
                     <div class="menu-section">
                         <h2>Join Existing Game</h2>
+                        <input type="text" id="joinUsername" class="input-field" placeholder="Your Username">
                         <input type="text" id="joinGameId" class="input-field" placeholder="Enter Game ID">
                         <button id="joinBtn" class="btn btn-secondary" onclick="joinGame()">Join Game</button>
                         <p class="info-text">Ask your friend for the Game ID</p>
+                    </div>
+                    
+                    <div class="divider">OR</div>
+                    
+                    <div class="menu-section">
+                        <h2>Leaderboard</h2>
+                        <button id="leaderboardBtn" class="btn btn-secondary" onclick="showLeaderboard()">View Rankings</button>
+                        <p class="info-text">Check win/loss records</p>
                     </div>
                 </div>
             </div>
@@ -42,7 +52,9 @@
                     <div class="player-info">
                         <p>Game ID: <span id="gameId">-</span></p>
                         <p>You are: <span id="playerColor">-</span></p>
+                        <p>Opponent: <span id="opponentName">Waiting...</span></p>
                     </div>
+                    <button class="btn btn-secondary" onclick="showLeaderboard()" style="margin-top: 10px; padding: 8px 16px; font-size: 0.9em;">View Leaderboard</button>
                 </div>
             </div>
             

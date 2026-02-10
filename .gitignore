@@ -10,3 +10,8 @@ node_modules/
 
 # Ignore OS files
 .DS_Store
+
+__pycache__/
+*.pyc
+
+PROJECT_STATE.md
