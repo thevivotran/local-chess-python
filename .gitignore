@@ -15,3 +15,5 @@ __pycache__/
 *.pyc
 
 PROJECT_STATE.md
+
+leaderboard.json

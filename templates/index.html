@@ -47,14 +47,23 @@
         <!-- Game Container -->
         <div id="gameContainer" class="game-container">
             <div class="game-header">
+                <div class="game-header-info">
+                    <div class="game-header-left">
+                        <h1>♟ Local Chess</h1>
+                        <div class="game-timer" id="gameTimer">00:00</div>
+                    </div>
+                    <div class="game-header-right">
+                        <span id="connectionIndicator" class="connection-indicator connection-disconnected"></span>
+                        <button class="sound-toggle" onclick="toggleSound()" title="Toggle Sound">🔊</button>
+                        <button class="btn btn-secondary" onclick="showLeaderboard()" style="padding: 8px 16px; font-size: 0.9em;">🏆</button>
+                    </div>
+                </div>
                 <div class="game-info">
-                    <h1>♟ Local Chess</h1>
                     <div class="player-info">
                         <p>Game ID: <span id="gameId">-</span></p>
                         <p>You are: <span id="playerColor">-</span></p>
                         <p>Opponent: <span id="opponentName">Waiting...</span></p>
                     </div>
-                    <button class="btn btn-secondary" onclick="showLeaderboard()" style="margin-top: 10px; padding: 8px 16px; font-size: 0.9em;">View Leaderboard</button>
                 </div>
             </div>
             
@@ -76,6 +85,12 @@
                     <div class="controls">
                         <button id="resetBtn" class="btn btn-danger" onclick="resetGame()" style="display: none;">
                             New Game
+                        </button>
+                        <button class="btn btn-draw" onclick="offerDraw()" title="Offer Draw">
+                            🤝 Draw
+                        </button>
+                        <button class="btn btn-resign" onclick="resign()" title="Resign">
+                            🚩 Resign
                         </button>
                     </div>
                 </div>

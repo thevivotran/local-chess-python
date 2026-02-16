@@ -97,6 +97,164 @@ def get_player_stats(player_name):
     return jsonify({'error': 'Player not found'}), 404
 
 
+@app.route('/api/leaderboard/top/<int:n>')
+def get_top_players(n=10):
+    """Get top N players by wins"""
+    leaderboard = load_leaderboard()
+    sorted_leaderboard = sorted(
+        leaderboard.items(), 
+        key=lambda x: x[1].get('wins', 0), 
+        reverse=True
+    )[:n]
+    return jsonify(dict(sorted_leaderboard))
+
+
+@app.route('/api/games/active')
+def get_active_games():
+    """Get count of active games (for admin/debug)"""
+    return jsonify({
+        'active_games': len(games),
+        'connected_players': len(player_games)
+    })
+
+
+@socketio.on('ping_server')
+def handle_ping():
+    """Respond to client ping for connection health check"""
+    emit('pong_server', {'timestamp': datetime.now().isoformat()})
+
+
+@socketio.on('request_draw')
+def handle_request_draw(data):
+    """Handle draw offer from a player"""
+    session_id = request.sid
+    reason = data.get('reason', 'offer')
+    
+    if session_id not in player_games:
+        emit('error', {'message': 'You are not in a game', 'code': 'NOT_IN_GAME'})
+        return
+    
+    game_id = player_games[session_id]
+    game = games.get(game_id)
+    
+    if not game:
+        emit('error', {'message': 'Game not found', 'code': 'GAME_NOT_FOUND'})
+        return
+    
+    try:
+        player_index = game['players'].index(session_id)
+    except ValueError:
+        emit('error', {'message': 'Not a player in this game', 'code': 'NOT_PLAYER'})
+        return
+    
+    # Offer draw to opponent
+    emit('draw_offered', {
+        'offered_by': game['usernames'][player_index],
+        'reason': reason
+    }, to=game_id, skip_sid=session_id)
+    
+    print(f'Draw offered by {game["usernames"][player_index]} in game {game_id}')
+
+
+@socketio.on('accept_draw')
+def handle_accept_draw():
+    """Handle draw acceptance"""
+    session_id = request.sid
+    
+    if session_id not in player_games:
+        emit('error', {'message': 'You are not in a game', 'code': 'NOT_IN_GAME'})
+        return
+    
+    game_id = player_games[session_id]
+    game = games.get(game_id)
+    
+    if not game:
+        emit('error', {'message': 'Game not found', 'code': 'GAME_NOT_FOUND'})
+        return
+    
+    try:
+        player_index = game['players'].index(session_id)
+    except ValueError:
+        emit('error', {'message': 'Not a player in this game', 'code': 'NOT_PLAYER'})
+        return
+    
+    # Record draw in leaderboard for both players
+    if game['usernames'][0] and game['usernames'][1]:
+        leaderboard = load_leaderboard()
+        for username in game['usernames']:
+            if username:
+                if username not in leaderboard:
+                    leaderboard[username] = {'wins': 0, 'losses': 0, 'draws': 0, 'total_games': 0}
+                if 'draws' not in leaderboard[username]:
+                    leaderboard[username]['draws'] = 0
+                leaderboard[username]['draws'] += 1
+                leaderboard[username]['total_games'] += 1
+        save_leaderboard(leaderboard)
+    
+    # Notify both players
+    emit('game_ended', {
+        'result': 'draw',
+        'reason': 'agreed_draw',
+        'message': 'Draw agreed by both players'
+    }, to=game_id)
+    
+    print(f'Draw agreed in game {game_id}')
+
+
+@socketio.on('resign')
+def handle_resign():
+    """Handle player resignation"""
+    session_id = request.sid
+    
+    if session_id not in player_games:
+        emit('error', {'message': 'You are not in a game', 'code': 'NOT_IN_GAME'})
+        return
+    
+    game_id = player_games[session_id]
+    game = games.get(game_id)
+    
+    if not game:
+        emit('error', {'message': 'Game not found', 'code': 'GAME_NOT_FOUND'})
+        return
+    
+    try:
+        player_index = game['players'].index(session_id)
+    except ValueError:
+        emit('error', {'message': 'Not a player in this game', 'code': 'NOT_PLAYER'})
+        return
+    
+    # Determine winner
+    winner_index = 1 - player_index
+    winner_name = game['usernames'][winner_index]
+    loser_name = game['usernames'][player_index]
+    
+    # Update leaderboard
+    if winner_name and loser_name:
+        leaderboard = load_leaderboard()
+        
+        for name in [winner_name, loser_name]:
+            if name not in leaderboard:
+                leaderboard[name] = {'wins': 0, 'losses': 0, 'total_games': 0}
+        
+        leaderboard[winner_name]['wins'] += 1
+        leaderboard[winner_name]['total_games'] += 1
+        leaderboard[loser_name]['losses'] += 1
+        leaderboard[loser_name]['total_games'] += 1
+        save_leaderboard(leaderboard)
+        
+        print(f'Leaderboard updated: {winner_name} won by resignation')
+    
+    # Notify both players
+    emit('game_ended', {
+        'result': 'resignation',
+        'winner': winner_name,
+        'loser': loser_name,
+        'message': f'{loser_name} resigned. {winner_name} wins!'
+    }, to=game_id)
+    
+    print(f'Game {game_id} ended: {loser_name} resigned')
+
+
 @socketio.on('connect')
 def handle_connect():
     print(f'Client connected: {request.sid}')
@@ -261,48 +419,97 @@ def handle_move(data):
     
     print(f'Move received: {move_uci}, type: {type(move_uci)}')
     
+    # Validate move exists and is a string
     if not move_uci or not isinstance(move_uci, str):
-        emit('error', {'message': 'No move provided'})
+        emit('error', {'message': 'No move provided', 'code': 'NO_MOVE'})
         return
     
-    # Validate UCI format (should be 4 or 5 characters like 'e2e4' or 'e7e8q')
+    # Validate UCI format strictly (must be 4 or 5 characters like 'e2e4' or 'e7e8q')
+    move_uci = move_uci.strip()
     if len(move_uci) < 4 or len(move_uci) > 5:
-        emit('error', {'message': 'Invalid move format'})
+        emit('error', {'message': 'Invalid move format. Use UCI format (e.g., e2e4)', 'code': 'INVALID_FORMAT'})
+        return
+    
+    # Additional validation: check UCI format more strictly
+    # UCI format: e2e4 means from e2 to e4
+    # Files (a-h): move_uci[0] and move_uci[2]
+    # Ranks (1-8): move_uci[1] and move_uci[3]
+    if move_uci[0] not in 'abcdefgh' or move_uci[2] not in 'abcdefgh':
+        emit('error', {'message': 'Invalid file in square coordinates', 'code': 'INVALID_SQUARES'})
+        return
+    if move_uci[1] not in '12345678' or move_uci[3] not in '12345678':
+        emit('error', {'message': 'Invalid rank in square coordinates', 'code': 'INVALID_RANK'})
+        return
+    
+    # Validate promotion piece if present
+    if len(move_uci) == 5 and move_uci[4].lower() not in 'qrbn':
+        emit('error', {'message': 'Invalid promotion piece. Use Q, R, B, or N', 'code': 'INVALID_PROMOTION'})
         return
     
     if session_id not in player_games:
-        emit('error', {'message': 'Not in a game'})
+        emit('error', {'message': 'You are not in a game. Create or join a game first.', 'code': 'NOT_IN_GAME'})
         return
     
     game_id = player_games[session_id]
     game = games.get(game_id)
     
     if not game:
-        emit('error', {'message': 'Game not found or expired'})
+        emit('error', {'message': 'Game not found or has expired', 'code': 'GAME_NOT_FOUND'})
+        # Clean up stale reference
+        del player_games[session_id]
         return
     
     # Check if game has both players
     if game['players'][1] is None:
-        emit('error', {'message': 'Waiting for opponent to join'})
+        emit('error', {'message': 'Waiting for opponent to join', 'code': 'WAITING_FOR_OPPONENT'})
         return
     
     # Check if it's the player's turn - handle ValueError if player not found
     try:
         player_index = game['players'].index(session_id)
     except ValueError:
-        emit('error', {'message': 'You are not a player in this game'})
+        emit('error', {'message': 'You are not a player in this game', 'code': 'NOT_PLAYER'})
         return
     
     if game['current_player'] != player_index:
-        emit('error', {'message': 'Not your turn'})
+        emit('error', {'message': 'Not your turn. Wait for opponent to move.', 'code': 'NOT_YOUR_TURN'})
         return
     
     try:
         move = chess.Move.from_uci(move_uci)
+        
+        # Additional validation: check if move is legal
         if move not in game['board'].legal_moves:
-            emit('error', {'message': 'Illegal move'})
+            # Provide more specific error messages
+            board = game['board']
+            
+            # Check if it's a promotion move without specifying piece
+            if (len(move_uci) == 4 and 
+                board.piece_type_at(chess.square_rank(chess.parse_square(move_uci[:2]))) == chess.PAWN):
+                source_rank = chess.square_rank(chess.parse_square(move_uci[:2]))
+                target_rank = chess.square_rank(chess.parse_square(move_uci[2:4]))
+                if (board.turn == chess.WHITE and target_rank == 7) or (board.turn == chess.BLACK and target_rank == 0):
+                    emit('error', {'message': 'Pawn promotion requires specifying piece (e.g., e7e8q)', 'code': 'PROMOTION_REQUIRED'})
+                    return
+            
+            # Check if move is pseudo-legal (exists but not legal due to leaving king in check)
+            try:
+                pseudo_move = chess.Move.from_uci(move_uci)
+                if pseudo_move in board.pseudo_legal_moves:
+                    emit('error', {'message': 'Illegal move: would leave king in check', 'code': 'KING_IN_CHECK'})
+                else:
+                    emit('error', {'message': 'Illegal move for this piece', 'code': 'ILLEGAL_MOVE'})
+            except:
+                emit('error', {'message': 'Illegal move', 'code': 'ILLEGAL_MOVE'})
             return
         
+        # Get move details before pushing
+        is_capture = game['board'].is_capture(move)
+        # Check for en passant: it's a capture but the target square doesn't have a piece
+        is_en_passant = game['board'].is_capture(move) and game['board'].piece_at(move.to_square) is None
+        is_castle = game['board'].is_castling(move)
+        
+        # Push the move
         game['board'].push(move)
         game['moves_history'].append(move_uci)
         game['current_player'] = 1 - game['current_player']
@@ -312,8 +519,27 @@ def handle_move(data):
         is_checkmate = game['board'].is_checkmate()
         is_stalemate = game['board'].is_stalemate()
         is_insufficient_material = game['board'].is_insufficient_material()
+        is_repetition = game['board'].is_repetition()
         is_fivefold_repetition = game['board'].is_fivefold_repetition()
         is_seventyfive_moves = game['board'].is_seventyfive_moves()
+        is_fifty_moves = game['board'].is_fifty_moves()
+        
+        # Determine game end reason
+        game_end_reason = None
+        if is_checkmate:
+            game_end_reason = 'checkmate'
+        elif is_stalemate:
+            game_end_reason = 'stalemate'
+        elif is_insufficient_material:
+            game_end_reason = 'insufficient_material'
+        elif is_repetition:
+            game_end_reason = 'threefold_repetition'
+        elif is_fivefold_repetition:
+            game_end_reason = 'fivefold_repetition'
+        elif is_seventyfive_moves:
+            game_end_reason = 'seventyfive_moves'
+        elif is_fifty_moves:
+            game_end_reason = 'fifty_moves'
         
         # Handle game end and update leaderboard
         if is_checkmate and game['usernames'][0] and game['usernames'][1]:
@@ -330,23 +556,33 @@ def handle_move(data):
         # Broadcast the move to both players
         emit('move_made', {
             'move': move_uci,
+            'from': move_uci[:2],
+            'to': move_uci[2:4],
+            'promotion': move_uci[4] if len(move_uci) == 5 else None,
             'board_fen': game['board'].fen(),
             'is_check': game['board'].is_check(),
             'is_checkmate': is_checkmate,
             'is_stalemate': is_stalemate,
             'is_insufficient_material': is_insufficient_material,
+            'is_repetition': is_repetition,
             'is_fivefold_repetition': is_fivefold_repetition,
             'is_seventyfive_moves': is_seventyfive_moves,
-            'is_draw': is_stalemate or is_insufficient_material or is_fivefold_repetition or is_seventyfive_moves,
+            'is_fifty_moves': is_fifty_moves,
+            'is_draw': is_stalemate or is_insufficient_material or is_fivefold_repetition or is_seventyfive_moves or is_repetition or is_fifty_moves,
+            'is_capture': is_capture,
+            'is_en_passant': is_en_passant,
+            'is_castle': is_castle,
+            'game_end_reason': game_end_reason,
             'current_player': game['current_player']
         }, to=game_id)
         
         print(f'Move {move_uci} made in game {game_id}')
         
     except ValueError as e:
-        emit('error', {'message': f'Invalid move format: {str(e)}'})
+        emit('error', {'message': f'Invalid move format: {str(e)}', 'code': 'MOVE_PARSE_ERROR'})
     except Exception as e:
-        emit('error', {'message': f'Error processing move: {str(e)}'})
+        emit('error', {'message': f'Error processing move: {str(e)}', 'code': 'MOVE_ERROR'})
+        print(f'Error processing move: {e}')
 
 
 def cleanup_expired_games():
@@ -374,14 +610,14 @@ def handle_get_board_state():
     session_id = request.sid
     
     if session_id not in player_games:
-        emit('error', {'message': 'Not in a game'})
+        emit('error', {'message': 'Not in a game', 'code': 'NOT_IN_GAME'})
         return
     
     game_id = player_games[session_id]
     game = games.get(game_id)
     
     if not game:
-        emit('error', {'message': 'Game not found or expired'})
+        emit('error', {'message': 'Game not found or expired', 'code': 'GAME_NOT_FOUND'})
         # Clean up stale reference
         del player_games[session_id]
         return
@@ -391,6 +627,22 @@ def handle_get_board_state():
     
     # Check for all game end conditions
     board = game['board']
+    
+    # Get castling rights
+    castling = {
+        'K': board.has_kingside_castling_rights(chess.WHITE),
+        'Q': board.has_queenside_castling_rights(chess.WHITE),
+        'k': board.has_kingside_castling_rights(chess.BLACK),
+        'q': board.has_queenside_castling_rights(chess.BLACK)
+    }
+    
+    # Get en passant target
+    ep_square = board.ep_square
+    en_passant = chess.square_name(ep_square) if ep_square else None
+    
+    # Calculate half move clock (for 50-move rule)
+    half_moves = board.halfmove_clock
+    
     emit('board_state', {
         'board_fen': board.fen(),
         'moves_history': game['moves_history'],
@@ -399,11 +651,66 @@ def handle_get_board_state():
         'is_checkmate': board.is_checkmate(),
         'is_stalemate': board.is_stalemate(),
         'is_insufficient_material': board.is_insufficient_material(),
+        'is_repetition': board.is_repetition(),
         'is_fivefold_repetition': board.is_fivefold_repetition(),
         'is_seventyfive_moves': board.is_seventyfive_moves(),
-        'is_draw': board.is_stalemate() or board.is_insufficient_material() or 
-                   board.is_fivefold_repetition() or board.is_seventyfive_moves()
+        'is_fifty_moves': board.is_fifty_moves(),
+        'is_draw': (board.is_stalemate() or board.is_insufficient_material() or 
+                    board.is_fivefold_repetition() or board.is_seventyfive_moves() or
+                    board.is_repetition() or board.is_fifty_moves()),
+        'castling': castling,
+        'en_passant': en_passant,
+        'half_moves': half_moves,
+        'full_moves': board.fullmove_number,
+        'usernames': game['usernames'],
+        'player_index': game['players'].index(session_id) if session_id in game['players'] else None
     })
+
+
+@socketio.on('leave_game')
+def handle_leave_game():
+    """Allow player to cleanly leave a game"""
+    session_id = request.sid
+    
+    if session_id not in player_games:
+        # Not in a game, nothing to do
+        return
+    
+    game_id = player_games[session_id]
+    
+    if game_id in games:
+        game = games[game_id]
+        username = player_usernames.get(session_id, 'Unknown')
+        
+        # Determine if player index
+        try:
+            player_index = game['players'].index(session_id)
+        except ValueError:
+            player_index = -1
+        
+        # Notify opponent
+        other_player_index = 1 if player_index == 0 else 0
+        other_player_id = game['players'][other_player_index] if other_player_index in [0, 1] else None
+        
+        if other_player_id:
+            emit('opponent_left', {
+                'message': f'{username} left the game',
+                'reason': 'player_left'
+            }, to=game_id, skip_sid=session_id)
+        
+        # Remove game if no players left
+        remaining_players = [p for p in game['players'] if p is not None and p != session_id]
+        if not remaining_players:
+            del games[game_id]
+            print(f'Game {game_id} removed (all players left)')
+    
+    # Clean up player mappings
+    del player_games[session_id]
+    if session_id in player_usernames:
+        del player_usernames[session_id]
+    
+    leave_room(game_id)
+    emit('left_game', {'message': 'You left the game successfully'})
 
 
 @socketio.on('reset_game')
@@ -463,4 +770,4 @@ def start_cleanup_task():
 if __name__ == '__main__':
     print("Starting Chess Server...")
     start_cleanup_task()
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5050, debug=True, allow_unsafe_werkzeug=True)
