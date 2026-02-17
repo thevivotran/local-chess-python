@@ -13,6 +13,60 @@ let lastMove = null;
 let connectionStatus = 'connecting';
 let soundEnabled = localStorage.getItem('chessSoundEnabled') !== 'false';
 
+// Captured pieces tracking
+let capturedPieces = { 'white': [], 'black': [] };
+
+// Update captured pieces display using custom DOM elements
+function updateCapturedPiecesDisplay() {
+    const leftCapturesEl = document.getElementById('captured-by-white');
+    const rightCapturesEl = document.getElementById('captured-by-black');
+    
+    // capturedPieces.white = white pieces captured by black
+    // capturedPieces.black = black pieces captured by white
+    const whitePiecesCaptured = capturedPieces.white || [];
+    const blackPiecesCaptured = capturedPieces.black || [];
+    
+    // Determine pieces based on current player's color
+    const isWhitePlayer = playerColor === 'white';
+    
+    // LEFT side: What YOU captured (opponent's pieces)
+    // If you play white, you captured black pieces -> show as black
+    // If you play black, you captured white pieces -> show as white
+    const yourCaptured = isWhitePlayer ? blackPiecesCaptured : whitePiecesCaptured;
+    const yourPieceColor = isWhitePlayer ? 'b' : 'w';
+    
+    // RIGHT side: What OPPONENT captured (your pieces)
+    // If you play white, opponent captured white pieces -> show as white
+    // If you play black, opponent captured black pieces -> show as black
+    const opponentCaptured = isWhitePlayer ? whitePiecesCaptured : blackPiecesCaptured;
+    const opponentPieceColor = isWhitePlayer ? 'w' : 'b';
+    
+    // Left: your captures
+    if (leftCapturesEl) {
+        leftCapturesEl.innerHTML = yourCaptured.map(p => 
+            `<img src="/static/img/chesspieces/wikipedia/${yourPieceColor}${p.type.toUpperCase()}.png" class="captured-piece-img" alt="${p.type}">`
+        ).join('');
+    }
+    
+    // Right: opponent's captures
+    if (rightCapturesEl) {
+        rightCapturesEl.innerHTML = opponentCaptured.map(p => 
+            `<img src="/static/img/chesspieces/wikipedia/${opponentPieceColor}${p.type.toUpperCase()}.png" class="captured-piece-img" alt="${p.type}">`
+        ).join('');
+    }
+    
+    console.log('Updated captured pieces - you are:', playerColor, 'your captured:', yourCaptured, 'opponent captured:', opponentCaptured);
+}
+
+// Clear captured pieces display
+function clearCapturedPieces() {
+    const whiteCapturesEl = document.getElementById('captured-by-white');
+    const blackCapturesEl = document.getElementById('captured-by-black');
+    
+    if (whiteCapturesEl) whiteCapturesEl.innerHTML = '';
+    if (blackCapturesEl) blackCapturesEl.innerHTML = '';
+}
+
 // Toast notification system
 function showToast(message, type = 'info', duration = 4000) {
   const existing = document.querySelector('.toast-container');
@@ -88,7 +142,7 @@ function checkUrlForInvite() {
   return false;
 }
 
-// Initialize Chessboard.js
+// Initialize Chessboard.js with best practices from chessboard.js docs
 function initializeBoard() {
   console.log('Initializing board with color:', playerColor);
   
@@ -103,16 +157,34 @@ function initializeBoard() {
     return;
   }
   
+  // Chessboard.js best practice: use animation speeds for smoother UX
   const config = {
     position: 'start',
     orientation: playerColor === 'white' ? 'white' : 'black',
     draggable: true,
     dropOffBoard: 'snapback',
+    showNotation: true,  // Show file/rank notation
+    appearSpeed: 200,    // Piece appear animation speed
+    moveSpeed: 200,      // Piece move animation speed  
+    snapSpeed: 25,        // Piece snap to square speed
+    snapbackSpeed: 50,   // Snapback animation speed
+    trashSpeed: 100,     // Piece removal speed
+    
+    // Event handlers - chessboard.js best practice
     onDragStart: onDragStart,
+    onDragMove: onDragMove,
     onDrop: onDrop,
+    onSnapbackEnd: onSnapbackEnd,
+    onSnapEnd: onSnapEnd,
     onMouseoverSquare: onMouseoverSquare,
     onMouseoutSquare: onMouseoutSquare,
-    pieceTheme: '/static/img/chesspieces/wikipedia/{piece}.png'
+    onChange: onChange,
+    
+    // Custom piece theme
+    pieceTheme: '/static/img/chesspieces/wikipedia/{piece}.png',
+    
+    // Error handling best practice
+    showErrors: 'console'
   };
   
   try {
@@ -126,17 +198,32 @@ function initializeBoard() {
     boardElement.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
   }
   
+  // Best practice: use resize() to recalculate board size
   setTimeout(() => {
     try {
       if (board && typeof board.resize === 'function') board.resize();
     } catch (e) {}
   }, 50);
 
-  window.addEventListener('resize', function() {
+  // Best practice: handle window resize
+  window.addEventListener('resize', debounce(function() {
     try {
       if (board && typeof board.resize === 'function') board.resize();
     } catch (e) {}
-  });
+  }, 250));
+}
+
+// Utility: debounce function for resize handler
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
 }
 
 function isPlayersTurn() {
@@ -153,6 +240,45 @@ function onDragStart(source, piece, position, orientation) {
   if (pieceColorChar !== expected) return false;
 
   return true;
+}
+
+// Best practice: onDragMove - fires while piece is being dragged
+function onDragMove(newLocation, oldLocation, source, piece, position, orientation) {
+  // Could add visual feedback during drag (like ghost piece)
+  // For now, we just log for debugging
+  // console.log('Drag move:', source, '->', newLocation);
+}
+
+// Best practice: onSnapbackEnd - fires when snapback animation completes
+function onSnapbackEnd(piece, square, position, orientation) {
+  // Reset any visual feedback
+  // console.log('Snapback ended for piece:', piece, 'at', square);
+}
+
+// Best practice: onSnapEnd - fires when piece snap animation completes (important for move sync!)
+function onSnapEnd(source, target, piece) {
+  // This is the official move completion event from chessboard.js
+  // The move has been animated to the target square
+  // We can use this to sync with server or update game state
+  console.log('Snap ended:', source, '->', target, 'piece:', piece);
+}
+
+// Best practice: flip board orientation (common chessboard.js feature)
+function flipBoard() {
+  if (board && typeof board.flip === 'function') {
+    board.flip();
+  }
+}
+
+// Share current game link
+function shareCurrentGame() {
+  if (!gameId) {
+    showToast('No active game to share', 'warning');
+    return;
+  }
+  
+  const shareableLink = window.location.origin + window.location.pathname + '?game=' + gameId;
+  showShareableLink(shareableLink);
 }
 
 // Highlight valid moves
@@ -172,6 +298,13 @@ function onMouseoutSquare(square, piece) {
   document.querySelectorAll('.highlight-valid').forEach(el => {
     el.classList.remove('highlight-valid');
   });
+}
+
+// Best practice: onChange - fires when board position changes (via animation or API)
+function onChange(oldPosition, newPosition) {
+  // Note: Don't call position-changing methods here (clear, move, position, start)
+  // as it will cause an infinite loop
+  // console.log('Position changed from', oldPosition, 'to', newPosition);
 }
 
 let currentFEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -244,43 +377,77 @@ function selectPromotion(piece) {
 
 function onDrop(source, target) {
   cancelPendingPromotion();
+  
+  // Game over or not your turn - return piece to source
   if (isGameOver) return 'snapback';
   if (!isPlayersTurn()) return 'snapback';
   if (source === target) return 'snapback';
   
+  // Get piece at source
   const chessBoard = new Chess(currentFEN);
   const piece = chessBoard.get(source);
   if (!piece) return 'snapback';
   
+  // Check if piece belongs to current player
   const pieceColorChar = piece.color;
   const expected = playerColor === 'white' ? 'w' : 'b';
   if (pieceColorChar !== expected) return 'snapback';
   
+  // Check if move is legal using chess.js (best practice: validate before sending to server)
   const testMove = chessBoard.move({ from: source, to: target, promotion: 'q' });
   if (testMove === null) return 'snapback';
   chessBoard.undo();
   
+  // Handle pawn promotion - show dialog and return piece to source temporarily
   if (isPawnPromotion(source, target)) {
     pendingPromotionMove = { source, target };
     showPromotionDialog(piece.color);
     return 'snapback';
   }
   
+  // Make the move locally
   const moveObj = chessBoard.move({ from: source, to: target });
   if (moveObj === null) return 'snapback';
   
+  // Update local state
   currentFEN = chessBoard.fen();
   const uciMove = source + target;
   console.log('Sending move:', uciMove);
+  
+  // Send to server - return 'trash' to let chessboard.js animate the piece to target
+  // The server will confirm and we update from there
   socket.emit('make_move', { move: uciMove });
   
+  // Best practice: return 'trash' to allow animation, 'snapback' to return piece
   return 'trash';
 }
 
+// Best practice: update board with proper error handling
 function updateBoard(fen, animated = true) {
-  console.log('Updating board with FEN:', fen);
+  // console.log('Updating board with FEN:', fen);
   currentFEN = fen;
-  if (board) board.position(fen, !animated);
+  try {
+    if (board) {
+      // Use the position() method - this is the chessboard.js best practice
+      board.position(fen, animated);
+    }
+  } catch (e) {
+    console.error('Error updating board position:', e);
+  }
+}
+
+// Best practice: get current board position as FEN
+function getBoardPosition() {
+  try {
+    if (board && typeof board.fen === 'function') {
+      return board.fen();
+    } else if (board && typeof board.position === 'function') {
+      return board.position('fen');
+    }
+  } catch (e) {
+    console.error('Error getting board position:', e);
+  }
+  return currentFEN;
 }
 
 // Highlight last move
@@ -334,15 +501,29 @@ function showShareableLink(link) {
   dialog.id = 'shareDialog';
   dialog.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:2000;';
   
+  // Check if Web Share API is available (mobile)
+  const canShare = navigator.share && navigator.canShare && navigator.canShare({
+    title: 'Join my Chess Game!',
+    text: 'Play chess with me!',
+    url: link
+  });
+  
+  const shareButtonHtml = canShare ? `
+    <button onclick="shareLink('${link}')" style="padding:14px 24px;background:#10b981;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;width:100%;margin-bottom:12px;">
+      📤 Share Link
+    </button>
+  ` : '';
+  
   dialog.innerHTML = `
-    <div style="background:white;padding:35px;border-radius:16px;text-align:center;max-width:480px;width:90%;">
-      <h3 style="margin-bottom:20px;color:#333;">Invite a Friend!</h3>
-      <p style="margin-bottom:15px;color:#666;">Share this link:</p>
-      <div style="display:flex;gap:10px;margin-bottom:20px;">
-        <input type="text" id="shareLinkInput" value="${link}" readonly style="flex:1;padding:14px;border:2px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.85em;">
-        <button onclick="copyShareLink()" style="padding:14px 24px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Copy</button>
+    <div style="background:white;padding:35px;border-radius:16px;text-align:center;max-width:400px;width:90%;">
+      <h3 style="margin-bottom:20px;color:#333;">Invite a Friend! 👋</h3>
+      <p style="margin-bottom:15px;color:#666;">Share this link to invite your friend:</p>
+      <div style="display:flex;gap:10px;margin-bottom:15px;">
+        <input type="text" id="shareLinkInput" value="${link}" readonly style="flex:1;padding:12px;border:2px solid #ddd;border-radius:8px;font-family:monospace;font-size:0.8em;">
+        <button onclick="copyShareLink()" style="padding:12px 16px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;">📋</button>
       </div>
-      <button onclick="closeShareDialog()" style="padding:12px 40px;background:#764ba2;color:white;border:none;border-radius:8px;cursor:pointer;">Got it!</button>
+      ${shareButtonHtml}
+      <button onclick="closeShareDialog()" style="padding:12px 40px;background:#764ba2;color:white;border:none;border-radius:8px;cursor:pointer;width:100%;">Got it!</button>
     </div>
   `;
   
@@ -355,9 +536,29 @@ function copyShareLink() {
   input.select();
   navigator.clipboard.writeText(input.value).then(function() {
     const btn = event.target;
-    btn.textContent = '✓ Copied!';
-    setTimeout(() => btn.textContent = 'Copy', 2000);
+    btn.textContent = '✓';
+    setTimeout(() => btn.textContent = '📋', 2000);
+    showToast('Link copied to clipboard!', 'success', 2000);
   });
+}
+
+function shareLink(link) {
+  if (navigator.share) {
+    navigator.share({
+      title: 'Join my Chess Game!',
+      text: 'Let\'s play chess! Click to join:',
+      url: link
+    }).then(() => {
+      console.log('Link shared successfully');
+    }).catch((error) => {
+      console.log('Error sharing:', error);
+      // Fallback to copy
+      copyShareLink();
+    });
+  } else {
+    // Fallback for desktop
+    copyShareLink();
+  }
 }
 
 function closeShareDialog() {
@@ -419,6 +620,12 @@ socket.on('opponent_joined', function(data) {
   
   if (!board) setTimeout(() => { initializeBoard(); updateBoard(data.board_fen, false); }, 100);
   else updateBoard(data.board_fen, false);
+  
+  // Update captured pieces display if any
+  if (data.captured_pieces) {
+    capturedPieces = data.captured_pieces;
+    updateCapturedPiecesDisplay();
+  }
 });
 
 socket.on('move_made', function(data) {
@@ -432,6 +639,12 @@ socket.on('move_made', function(data) {
   
   updateBoard(data.board_fen);
   currentPlayerTurn = data.current_player;
+  
+  // Update captured pieces display using chessboard.js spare pieces
+  if (data.captured_pieces) {
+    capturedPieces = data.captured_pieces;
+    updateCapturedPiecesDisplay();
+  }
 
   let status = '';
   let statusClass = 'status-playing';
@@ -470,19 +683,39 @@ socket.on('move_made', function(data) {
 
   document.getElementById('status').innerHTML = `<span class="${statusClass}">${status}</span>`;
   
+  // Update move history with proper DOM manipulation
   const moveHistoryDiv = document.getElementById('moveHistory');
   const moveCount = moveHistoryDiv.children.length;
   const moveNumber = Math.floor(moveCount / 2) + 1;
   const isWhiteMove = moveCount % 2 === 0;
   
   if (isWhiteMove) {
-    moveHistoryDiv.innerHTML += `<div class="move-pair"><span class="move-num">${moveNumber}.</span> <span class="move-white">${data.move}</span>`;
+    // Create new row for white's move
+    const newRow = document.createElement('div');
+    newRow.className = 'move-pair';
+    newRow.innerHTML = `
+      <span class="move-num">${moveNumber}.</span>
+      <span class="move-white">${data.move}</span>
+      <span class="move-black">-</span>
+    `;
+    moveHistoryDiv.appendChild(newRow);
   } else {
-    const lastDiv = moveHistoryDiv.lastElementChild;
-    if (lastDiv) lastDiv.innerHTML += ` <span class="move-black">${data.move}</span></div>`;
+    // Update existing row with black's move
+    const lastRow = moveHistoryDiv.lastElementChild;
+    if (lastRow) {
+      const blackMove = lastRow.querySelector('.move-black');
+      if (blackMove) {
+        blackMove.textContent = data.move;
+        blackMove.classList.remove('move-black');
+        blackMove.classList.add('move-black', 'filled');
+      }
+    }
   }
   
-  moveHistoryDiv.scrollTop = moveHistoryDiv.scrollHeight;
+  // Auto-scroll to bottom after adding move
+  requestAnimationFrame(() => {
+    moveHistoryDiv.scrollTop = moveHistoryDiv.scrollHeight;
+  });
 });
 
 socket.on('board_state', function(data) {
@@ -495,6 +728,12 @@ socket.on('board_state', function(data) {
     opponentUsername = data.usernames[1 - data.player_index];
     document.getElementById('opponentName').textContent = opponentUsername || 'Waiting...';
   }
+  
+  // Update captured pieces display
+  if (data.captured_pieces) {
+    capturedPieces = data.captured_pieces;
+    updateCapturedPiecesDisplay();
+  }
 });
 
 socket.on('game_reset', function(data) {
@@ -506,11 +745,17 @@ socket.on('game_reset', function(data) {
   isGameOver = false;
   lastMove = null;
   gameStartTime = Date.now();
+  capturedPieces = { 'white': [], 'black': [] };
+  drawOfferSent = false;
+  closeDrawOfferDialog();
   
   document.querySelectorAll('.highlight-last-move').forEach(el => el.classList.remove('highlight-last-move'));
   
   updateBoard(data.board_fen, false);
-  document.getElementById('moveHistory').innerHTML = '';
+  clearCapturedPieces();
+  // Clear move history efficiently
+  const moveHistoryDiv = document.getElementById('moveHistory');
+  if (moveHistoryDiv) moveHistoryDiv.innerHTML = '';
   document.getElementById('status').innerHTML = data.message;
   document.getElementById('resetBtn').style.display = 'none';
 });
@@ -519,6 +764,8 @@ socket.on('opponent_left', function(data) {
   console.log('Opponent left:', data.message);
   showToast(data.message || 'Opponent left the game', 'warning');
   document.getElementById('status').innerHTML = data.message || 'Opponent left';
+  drawOfferSent = false;
+  closeDrawOfferDialog();
   updateUI('opponent-left');
 });
 
@@ -544,6 +791,9 @@ socket.on('error', function(data) {
 
 socket.on('game_ended', function(data) {
   isGameOver = true;
+  drawOfferSent = false;
+  closeDrawOfferDialog();
+  
   if (data.result === 'draw') {
     showToast('Game ended in a draw!', 'info');
     document.getElementById('status').innerHTML = `<span class="status-draw">${data.message}</span>`;
@@ -560,8 +810,56 @@ socket.on('game_ended', function(data) {
 });
 
 socket.on('draw_offered', function(data) {
-  showToast(`${data.offered_by} offered a draw. Accept?`, 'warning', 10000);
+  // Show draw offer dialog with accept/decline buttons
+  const existingDialog = document.getElementById('drawOfferDialog');
+  if (existingDialog) existingDialog.remove();
+  
+  // Don't show dialog if we already have one
+  if (document.getElementById('drawOfferDialog')) return;
+  
+  const dialog = document.createElement('div');
+  dialog.id = 'drawOfferDialog';
+  dialog.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;justify-content:center;align-items:center;z-index:3000;';
+  
+  const isOurOffer = data.offered_by === username;
+  
+  dialog.innerHTML = `
+    <div style="background:white;padding:30px;border-radius:16px;text-align:center;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+      <h3 style="margin-bottom:15px;color:#333;">${isOurOffer ? 'Draw Offer Sent' : 'Draw Offer Received'}</h3>
+      <p style="margin-bottom:25px;color:#666;">${isOurOffer ? 'Waiting for opponent to accept...' : `${data.offered_by} offered a draw. Do you accept?`}</p>
+      ${!isOurOffer ? `
+        <div style="display:flex;gap:15px;justify-content:center;">
+          <button id="acceptDrawBtn" style="padding:12px 30px;background:#10b981;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;">✓ Accept</button>
+          <button id="declineDrawBtn" style="padding:12px 30px;background:#ef4444;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;">✗ Decline</button>
+        </div>
+      ` : `
+        <button onclick="closeDrawOfferDialog()" style="padding:12px 30px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;">Cancel Offer</button>
+      `}
+    </div>
+  `;
+  
+  document.body.appendChild(dialog);
+  
+  // Add event listeners
+  if (!isOurOffer) {
+    document.getElementById('acceptDrawBtn').addEventListener('click', function() {
+      socket.emit('accept_draw');
+      closeDrawOfferDialog();
+      showToast('Draw accepted!', 'success');
+    });
+    
+    document.getElementById('declineDrawBtn').addEventListener('click', function() {
+      closeDrawOfferDialog();
+      showToast('Draw declined', 'info');
+      // Optionally notify the offerer that their offer was declined
+    });
+  }
 });
+
+function closeDrawOfferDialog() {
+  const dialog = document.getElementById('drawOfferDialog');
+  if (dialog) dialog.remove();
+}
 
 socket.on('left_game', function(data) {
   showToast(data.message, 'info');
@@ -617,6 +915,19 @@ function joinGame() {
   socket.emit('join_game', { game_id: gameIdVal, username: username });
 }
 
+// Best practice: destroy board properly to prevent memory leaks
+function destroyBoard() {
+  try {
+    if (board && typeof board.destroy === 'function') {
+      board.destroy();
+      board = null;
+      console.log('Board destroyed');
+    }
+  } catch (e) {
+    console.error('Error destroying board:', e);
+  }
+}
+
 function resetGame() {
   console.log('Resetting game...');
   if (gameId) socket.emit('leave_game');
@@ -632,21 +943,45 @@ function resetGame() {
   gameStartTime = null;
   currentFEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   
-  if (board) board.position('start');
+  // Best practice: reset board to start position
+  if (board) {
+    try {
+      board.position('start');
+    } catch (e) {
+      console.error('Error resetting board:', e);
+    }
+  }
+  
   window.history.replaceState({}, document.title, window.location.pathname);
   
   document.getElementById('gameId').textContent = '-';
   document.getElementById('playerColor').textContent = '-';
   document.getElementById('opponentName').textContent = 'Waiting...';
-  document.getElementById('moveHistory').innerHTML = '';
+  // Clear move history efficiently
+  const moveHistoryDiv = document.getElementById('moveHistory');
+  if (moveHistoryDiv) moveHistoryDiv.innerHTML = '';
   document.getElementById('status').innerHTML = 'Connecting...';
   document.getElementById('resetBtn').style.display = 'none';
   document.getElementById('gameTimer').textContent = '00:00';
   
+  // Clear captured pieces display
+  clearCapturedPieces();
+  capturedPieces = { 'white': [], 'black': [] };
+  drawOfferSent = false;
+  closeDrawOfferDialog();
+  
   updateUI('menu');
 }
 
+// Track draw offer state
+let drawOfferSent = false;
+
 function offerDraw() {
+  if (drawOfferSent) {
+    showToast('You already have a pending draw offer', 'warning');
+    return;
+  }
+  drawOfferSent = true;
   socket.emit('request_draw', { reason: 'offer' });
   showToast('Draw offer sent', 'info');
 }

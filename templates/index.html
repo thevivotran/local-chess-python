@@ -55,7 +55,9 @@
                     <div class="game-header-right">
                         <span id="connectionIndicator" class="connection-indicator connection-disconnected"></span>
                         <button class="sound-toggle" onclick="toggleSound()" title="Toggle Sound">🔊</button>
-                        <button class="btn btn-secondary" onclick="showLeaderboard()" style="padding: 8px 16px; font-size: 0.9em;">🏆</button>
+                        <button class="btn btn-secondary" onclick="flipBoard()" title="Flip Board" style="padding: 8px 16px; font-size: 0.9em;">🔄</button>
+                        <button class="btn btn-secondary" onclick="shareCurrentGame()" title="Share Game" style="padding: 8px 16px; font-size: 0.9em;">📤</button>
+                        <button class="btn btn-secondary" onclick="showLeaderboard()" title="Leaderboard" style="padding: 8px 16px; font-size: 0.9em;">🏆</button>
                     </div>
                 </div>
                 <div class="game-info">
@@ -68,8 +70,22 @@
             </div>
             
             <div class="game-content">
-                <div class="board-container">
-                    <div id="board"></div>
+                <div class="board-with-captured">
+                    <div class="captured-pieces-left">
+                        <div class="captured-section captured-by-white">
+                            <span class="captured-label">You captured</span>
+                            <div id="captured-by-white" class="captured-pieces-row"></div>
+                        </div>
+                    </div>
+                    <div class="board-container">
+                        <div id="board"></div>
+                    </div>
+                    <div class="captured-pieces-right">
+                        <div class="captured-section captured-by-black">
+                            <span class="captured-label">Opponent captured</span>
+                            <div id="captured-by-black" class="captured-pieces-row"></div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="game-panel">

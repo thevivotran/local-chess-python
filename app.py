@@ -326,6 +326,7 @@ def handle_create_game(data):
         'current_player': 0,
         'moves_history': [],
         'usernames': [username, None],
+        'captured_pieces': {'white': [], 'black': []},
         'start_time': datetime.now().isoformat(),
         'last_activity': datetime.now().isoformat()
     }
@@ -406,6 +407,7 @@ def handle_join_game(data):
         'message': 'Opponent has joined',
         'board_fen': game['board'].fen(),
         'moves_history': game['moves_history'],
+        'captured_pieces': game['captured_pieces'],
         'opponent_username': username
     }, to=game_id, skip_sid=session_id)
     
@@ -509,6 +511,29 @@ def handle_move(data):
         is_en_passant = game['board'].is_capture(move) and game['board'].piece_at(move.to_square) is None
         is_castle = game['board'].is_castling(move)
         
+        # Track captured piece
+        captured_piece = None
+        if is_capture:
+            # Get the piece at the destination square before move is pushed
+            if is_en_passant:
+                # En passant captures the pawn behind the target square
+                if move.to_square < move.from_square:
+                    captured_square = move.to_square + 8
+                else:
+                    captured_square = move.to_square - 8
+                captured_piece = game['board'].piece_at(captured_square)
+            else:
+                captured_piece = game['board'].piece_at(move.to_square)
+            
+            if captured_piece:
+                # Current player captured - add to their captured pieces
+                capturing_player = 0 if game['current_player'] == 0 else 1
+                capturing_color = 'white' if game['current_player'] == 0 else 'black'
+                game['captured_pieces'][capturing_color].append({
+                    'type': captured_piece.symbol(),
+                    'color': 'white' if captured_piece.color == chess.WHITE else 'black'
+                })
+        
         # Push the move
         game['board'].push(move)
         game['moves_history'].append(move_uci)
@@ -572,6 +597,8 @@ def handle_move(data):
             'is_capture': is_capture,
             'is_en_passant': is_en_passant,
             'is_castle': is_castle,
+            'captured_piece': captured_piece.symbol() if captured_piece else None,
+            'captured_pieces': game['captured_pieces'],
             'game_end_reason': game_end_reason,
             'current_player': game['current_player']
         }, to=game_id)
@@ -663,6 +690,7 @@ def handle_get_board_state():
         'half_moves': half_moves,
         'full_moves': board.fullmove_number,
         'usernames': game['usernames'],
+        'captured_pieces': game['captured_pieces'],
         'player_index': game['players'].index(session_id) if session_id in game['players'] else None
     })
 
@@ -741,11 +769,13 @@ def handle_reset_game():
     game['board'] = chess.Board()
     game['moves_history'] = []
     game['current_player'] = 0
+    game['captured_pieces'] = {'white': [], 'black': []}
     game['start_time'] = datetime.now().isoformat()
     game['last_activity'] = datetime.now().isoformat()
     
     emit('game_reset', {
         'board_fen': game['board'].fen(),
+        'captured_pieces': game['captured_pieces'],
         'message': 'Game has been reset',
         'reset_by': game['usernames'][player_index]
     }, to=game_id)
