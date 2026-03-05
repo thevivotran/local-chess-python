@@ -12,59 +12,107 @@ let isGameOver = false;
 let lastMove = null;
 let connectionStatus = 'connecting';
 let soundEnabled = localStorage.getItem('chessSoundEnabled') !== 'false';
+let timerInterval = null;
+
+// Click-to-move state
+let selectedSquare = null;
+let dragJustCompleted = false;
+
+// Disconnect countdown interval
+let disconnectCountdownInterval = null;
 
 // Captured pieces tracking
 let capturedPieces = { 'white': [], 'black': [] };
 
-// Update captured pieces display using custom DOM elements
-function updateCapturedPiecesDisplay() {
-    const leftCapturesEl = document.getElementById('captured-by-white');
-    const rightCapturesEl = document.getElementById('captured-by-black');
-    
-    // capturedPieces.white = white pieces captured by black
-    // capturedPieces.black = black pieces captured by white
-    const whitePiecesCaptured = capturedPieces.white || [];
-    const blackPiecesCaptured = capturedPieces.black || [];
-    
-    // Determine pieces based on current player's color
-    const isWhitePlayer = playerColor === 'white';
-    
-    // LEFT side: What YOU captured (opponent's pieces)
-    // If you play white, you captured black pieces -> show as black
-    // If you play black, you captured white pieces -> show as white
-    const yourCaptured = isWhitePlayer ? blackPiecesCaptured : whitePiecesCaptured;
-    const yourPieceColor = isWhitePlayer ? 'b' : 'w';
-    
-    // RIGHT side: What OPPONENT captured (your pieces)
-    // If you play white, opponent captured white pieces -> show as white
-    // If you play black, opponent captured black pieces -> show as black
-    const opponentCaptured = isWhitePlayer ? whitePiecesCaptured : blackPiecesCaptured;
-    const opponentPieceColor = isWhitePlayer ? 'w' : 'b';
-    
-    // Left: your captures
-    if (leftCapturesEl) {
-        leftCapturesEl.innerHTML = yourCaptured.map(p => 
-            `<img src="/static/img/chesspieces/wikipedia/${yourPieceColor}${p.type.toUpperCase()}.png" class="captured-piece-img" alt="${p.type}">`
-        ).join('');
-    }
-    
-    // Right: opponent's captures
-    if (rightCapturesEl) {
-        rightCapturesEl.innerHTML = opponentCaptured.map(p => 
-            `<img src="/static/img/chesspieces/wikipedia/${opponentPieceColor}${p.type.toUpperCase()}.png" class="captured-piece-img" alt="${p.type}">`
-        ).join('');
-    }
-    
-    console.log('Updated captured pieces - you are:', playerColor, 'your captured:', yourCaptured, 'opponent captured:', opponentCaptured);
+// Chess clocks (seconds remaining)
+let whiteClock = 1200;
+let blackClock = 1200;
+let clockInterval = null;
+
+function formatClock(s) {
+    s = Math.max(0, Math.floor(s));
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// Clear captured pieces display
+function updateClockDisplay() {
+    const whiteEl = document.getElementById('white-time');
+    const blackEl = document.getElementById('black-time');
+    const whiteBox = document.getElementById('clock-white');
+    const blackBox = document.getElementById('clock-black');
+
+    if (whiteEl) whiteEl.textContent = formatClock(whiteClock);
+    if (blackEl) blackEl.textContent = formatClock(blackClock);
+
+    // Active / inactive classes
+    if (whiteBox && blackBox) {
+        if (currentPlayerTurn === 0) {
+            whiteBox.classList.remove('clock-inactive', 'clock-low');
+            whiteBox.classList.add('clock-active');
+            blackBox.classList.remove('clock-active', 'clock-low');
+            blackBox.classList.add('clock-inactive');
+            if (whiteClock <= 30) whiteBox.classList.add('clock-low');
+        } else {
+            blackBox.classList.remove('clock-inactive', 'clock-low');
+            blackBox.classList.add('clock-active');
+            whiteBox.classList.remove('clock-active', 'clock-low');
+            whiteBox.classList.add('clock-inactive');
+            if (blackClock <= 30) blackBox.classList.add('clock-low');
+        }
+    }
+}
+
+function startClockCountdown() {
+    clearInterval(clockInterval);
+    clockInterval = setInterval(function() {
+        if (isGameOver) {
+            clearInterval(clockInterval);
+            return;
+        }
+        if (currentPlayerTurn === 0) {
+            whiteClock = Math.max(0, whiteClock - 1);
+        } else {
+            blackClock = Math.max(0, blackClock - 1);
+        }
+        updateClockDisplay();
+        if (whiteClock === 0 || blackClock === 0) {
+            clearInterval(clockInterval);
+            socket.emit('timeout');
+        }
+    }, 1000);
+}
+
+function renderCapturedInto(container, pieces) {
+    container.textContent = '';
+    pieces.forEach(function(p) {
+        const img = document.createElement('img');
+        const prefix = p.color === 'white' ? 'w' : 'b';
+        img.src = '/static/img/chesspieces/wikipedia/' + prefix + p.type.toUpperCase() + '.png';
+        img.className = 'captured-piece-img';
+        img.alt = p.type;
+        container.appendChild(img);
+    });
+}
+
+function updateCapturedPiecesDisplay() {
+    const yourEl = document.getElementById('your-captures');
+    const opponentEl = document.getElementById('opponent-captures');
+    if (!yourEl || !opponentEl) return;
+
+    // captured_pieces['white'] = captured BY white = black pieces
+    // captured_pieces['black'] = captured BY black = white pieces
+    const isWhitePlayer = playerColor === 'white';
+    const yourCaptured     = isWhitePlayer ? (capturedPieces.white || []) : (capturedPieces.black || []);
+    const opponentCaptured = isWhitePlayer ? (capturedPieces.black || []) : (capturedPieces.white || []);
+
+    renderCapturedInto(yourEl, yourCaptured);
+    renderCapturedInto(opponentEl, opponentCaptured);
+}
+
 function clearCapturedPieces() {
-    const whiteCapturesEl = document.getElementById('captured-by-white');
-    const blackCapturesEl = document.getElementById('captured-by-black');
-    
-    if (whiteCapturesEl) whiteCapturesEl.innerHTML = '';
-    if (blackCapturesEl) blackCapturesEl.innerHTML = '';
+    const yourEl = document.getElementById('your-captures');
+    const opponentEl = document.getElementById('opponent-captures');
+    if (yourEl) yourEl.textContent = '';
+    if (opponentEl) opponentEl.textContent = '';
 }
 
 // Toast notification system
@@ -89,6 +137,58 @@ function showToast(message, type = 'info', duration = 4000) {
   setTimeout(() => {
     if (toast.parentElement) toast.remove();
   }, duration);
+}
+
+// Reconnect localStorage helpers
+function saveReconnectInfo() {
+  localStorage.setItem('chess_reconnect', JSON.stringify({ gameId, username, color: playerColor }));
+}
+
+function clearReconnectInfo() {
+  localStorage.removeItem('chess_reconnect');
+}
+
+function checkForReconnect() {
+  const saved = localStorage.getItem('chess_reconnect');
+  if (!saved) return;
+  let info;
+  try { info = JSON.parse(saved); } catch(e) { localStorage.removeItem('chess_reconnect'); return; }
+  if (!info.gameId || !info.username) { localStorage.removeItem('chess_reconnect'); return; }
+
+  const banner = document.createElement('div');
+  banner.id = 'reconnectBanner';
+  banner.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1f2937;color:white;padding:16px 24px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.4);z-index:5000;display:flex;align-items:center;gap:16px;max-width:90%;';
+
+  const label = document.createElement('span');
+  label.textContent = 'Resume game as ';
+  const strong = document.createElement('strong');
+  strong.textContent = info.username;
+  label.appendChild(strong);
+  label.appendChild(document.createTextNode('?'));
+
+  const reconnectBtn = document.createElement('button');
+  reconnectBtn.textContent = 'Reconnect';
+  reconnectBtn.style.cssText = 'padding:8px 16px;background:#6366f1;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;';
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.style.cssText = 'padding:8px 16px;background:#4b5563;color:white;border:none;border-radius:6px;cursor:pointer;';
+
+  banner.appendChild(label);
+  banner.appendChild(reconnectBtn);
+  banner.appendChild(dismissBtn);
+  document.body.appendChild(banner);
+
+  reconnectBtn.addEventListener('click', function() {
+    banner.remove();
+    username = info.username;
+    socket.emit('reconnect_game', { game_id: info.gameId, username: info.username });
+  });
+
+  dismissBtn.addEventListener('click', function() {
+    banner.remove();
+    clearReconnectInfo();
+  });
 }
 
 // Connection status indicator
@@ -140,6 +240,91 @@ function checkUrlForInvite() {
     return true;
   }
   return false;
+}
+
+// Click-to-move helpers
+function getSquareFromEvent(e) {
+  let el = e.target;
+  while (el && el !== document.body) {
+    const squareClass = Array.from(el.classList).find(c => /^square-[a-h][1-8]$/.test(c));
+    if (squareClass) return squareClass.replace('square-', '');
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function selectSquare(square) {
+  clearSelection();
+  selectedSquare = square;
+  const el = document.querySelector('.square-' + square);
+  if (el) el.classList.add('highlight-selected');
+
+  try {
+    const chess = new Chess(currentFEN);
+    const moves = chess.moves({ square: square, verbose: true });
+    moves.forEach(function(move) {
+      const squareEl = document.querySelector('.square-' + move.to);
+      if (squareEl) squareEl.classList.add('highlight-valid');
+    });
+  } catch(e) {}
+}
+
+function clearSelection() {
+  if (selectedSquare) {
+    const el = document.querySelector('.square-' + selectedSquare);
+    if (el) el.classList.remove('highlight-selected');
+  }
+  document.querySelectorAll('.highlight-valid').forEach(function(el) {
+    el.classList.remove('highlight-valid');
+  });
+  selectedSquare = null;
+}
+
+function handleSquareClick(square) {
+  if (isGameOver || !isPlayersTurn()) { clearSelection(); return; }
+
+  const chess = new Chess(currentFEN);
+  const piece = chess.get(square);
+  const expectedColor = playerColor === 'white' ? 'w' : 'b';
+
+  if (selectedSquare !== null) {
+    if (square === selectedSquare) {
+      clearSelection();
+      return;
+    }
+
+    // Re-select another own piece
+    if (piece && piece.color === expectedColor) {
+      selectSquare(square);
+      return;
+    }
+
+    // Try the move
+    const testChess = new Chess(currentFEN);
+    const testMove = testChess.move({ from: selectedSquare, to: square, promotion: 'q' });
+    if (testMove !== null) {
+      if (isPawnPromotion(selectedSquare, square)) {
+        const srcPiece = chess.get(selectedSquare);
+        pendingPromotionMove = { source: selectedSquare, target: square };
+        clearSelection();
+        showPromotionDialog(srcPiece ? srcPiece.color : expectedColor);
+      } else {
+        const chessBoard = new Chess(currentFEN);
+        const moveObj = chessBoard.move({ from: selectedSquare, to: square });
+        if (moveObj !== null) {
+          currentFEN = chessBoard.fen();
+          socket.emit('make_move', { move: selectedSquare + square });
+        }
+        clearSelection();
+      }
+    } else {
+      clearSelection();
+    }
+  } else {
+    if (piece && piece.color === expectedColor) {
+      selectSquare(square);
+    }
+  }
 }
 
 // Initialize Chessboard.js with best practices from chessboard.js docs
@@ -196,6 +381,11 @@ function initializeBoard() {
 
   if (boardElement) {
     boardElement.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+    boardElement.addEventListener('click', function(e) {
+      if (dragJustCompleted) return;
+      const square = getSquareFromEvent(e);
+      if (square) handleSquareClick(square);
+    });
   }
   
   // Best practice: use resize() to recalculate board size
@@ -231,10 +421,11 @@ function isPlayersTurn() {
 }
 
 function onDragStart(source, piece, position, orientation) {
+  clearSelection();
   if (isGameOver) return false;
   if (!isPlayersTurn()) return false;
   if (!playerColor || !piece) return false;
-  
+
   const pieceColorChar = piece.charAt(0);
   const expected = playerColor === 'white' ? 'w' : 'b';
   if (pieceColorChar !== expected) return false;
@@ -281,17 +472,23 @@ function shareCurrentGame() {
   showShareableLink(shareableLink);
 }
 
-// Highlight valid moves
+// Highlight valid moves — only on player's turn, only their own pieces
 function onMouseoverSquare(square, piece) {
-  if (!board || isGameOver) return;
-  
-  const chess = new Chess(board.position());
-  const moves = chess.moves({ square: square, verbose: true });
-  
-  moves.forEach(move => {
-    const squareEl = document.querySelector(`.square-${move.to}`);
-    if (squareEl) squareEl.classList.add('highlight-valid');
-  });
+  if (!board || isGameOver || !piece) return;
+  if (!isPlayersTurn()) return;
+  // Only highlight the current player's pieces
+  const pieceColor = piece.charAt(0);
+  const expected = playerColor === 'white' ? 'w' : 'b';
+  if (pieceColor !== expected) return;
+
+  try {
+    const chess = new Chess(currentFEN);
+    const moves = chess.moves({ square: square, verbose: true });
+    moves.forEach(move => {
+      const squareEl = document.querySelector(`.square-${move.to}`);
+      if (squareEl) squareEl.classList.add('highlight-valid');
+    });
+  } catch(e) {}
 }
 
 function onMouseoutSquare(square, piece) {
@@ -377,7 +574,8 @@ function selectPromotion(piece) {
 
 function onDrop(source, target) {
   cancelPendingPromotion();
-  
+  clearSelection();
+
   // Game over or not your turn - return piece to source
   if (isGameOver) return 'snapback';
   if (!isPlayersTurn()) return 'snapback';
@@ -417,7 +615,11 @@ function onDrop(source, target) {
   // Send to server - return 'trash' to let chessboard.js animate the piece to target
   // The server will confirm and we update from there
   socket.emit('make_move', { move: uciMove });
-  
+
+  // Suppress the synthetic click event fired ~300ms after touchend on mobile
+  dragJustCompleted = true;
+  setTimeout(function() { dragJustCompleted = false; }, 500);
+
   // Best practice: return 'trash' to allow animation, 'snapback' to return piece
   return 'trash';
 }
@@ -457,6 +659,54 @@ function highlightLastMove(from, to) {
   [from, to].forEach(sq => {
     const el = document.querySelector(`.square-${sq}`);
     if (el) el.classList.add('highlight-last-move');
+  });
+}
+
+// Rebuild move history from a list of UCI moves (used after reconnect)
+function rebuildMoveHistory(movesUCI) {
+  const moveHistoryDiv = document.getElementById('moveHistory');
+  if (!moveHistoryDiv) return;
+  moveHistoryDiv.innerHTML = '';
+
+  const tempChess = new Chess();
+  movesUCI.forEach(function(uci, idx) {
+    const from = uci.slice(0, 2);
+    const to = uci.slice(2, 4);
+    const promotion = uci.length === 5 ? uci[4] : undefined;
+    const moveObj = tempChess.move({ from, to, promotion });
+    if (!moveObj) return;
+
+    const san = moveObj.san;
+    const isWhiteMove = (idx % 2 === 0);
+
+    if (isWhiteMove) {
+      const moveNumber = moveHistoryDiv.children.length + 1;
+      const newRow = document.createElement('div');
+      newRow.className = 'move-pair';
+      const numSpan = document.createElement('span');
+      numSpan.className = 'move-num';
+      numSpan.textContent = moveNumber + '.';
+      const whiteSpan = document.createElement('span');
+      whiteSpan.className = 'move-white';
+      whiteSpan.textContent = san;
+      const blackSpan = document.createElement('span');
+      blackSpan.className = 'move-black';
+      blackSpan.textContent = '-';
+      newRow.appendChild(numSpan);
+      newRow.appendChild(whiteSpan);
+      newRow.appendChild(blackSpan);
+      moveHistoryDiv.appendChild(newRow);
+    } else {
+      const lastRow = moveHistoryDiv.lastElementChild;
+      if (lastRow) {
+        const blackMove = lastRow.querySelector('.move-black');
+        if (blackMove) blackMove.textContent = san;
+      }
+    }
+  });
+
+  requestAnimationFrame(() => {
+    moveHistoryDiv.scrollTop = moveHistoryDiv.scrollHeight;
   });
 }
 
@@ -577,16 +827,18 @@ socket.on('game_created', function(data) {
   gameStartTime = Date.now();
   
   console.log('Game created:', gameId);
-  
+  saveReconnectInfo();
+
   document.getElementById('gameId').textContent = gameId.substring(0, 8) + '...';
   document.getElementById('playerColor').textContent = playerColor.toUpperCase();
   document.getElementById('status').innerHTML = '<span class="status-waiting">Waiting for opponent...</span>';
-  
+
   const shareableLink = window.location.origin + window.location.pathname + '?game=' + gameId;
   updateUI('waiting');
   showShareableLink(shareableLink);
-  
-  setInterval(updateGameTimer, 1000);
+
+  clearInterval(timerInterval);
+  timerInterval = setInterval(updateGameTimer, 1000);
 });
 
 socket.on('game_joined', function(data) {
@@ -600,7 +852,8 @@ socket.on('game_joined', function(data) {
   gameStartTime = Date.now();
   
   console.log('Game joined:', gameId);
-  
+  saveReconnectInfo();
+
   document.getElementById('gameId').textContent = gameId.substring(0, 8) + '...';
   document.getElementById('playerColor').textContent = playerColor.toUpperCase();
   document.getElementById('opponentName').textContent = opponentUsername || 'Waiting...';
@@ -608,7 +861,9 @@ socket.on('game_joined', function(data) {
   
   updateUI('playing');
   setTimeout(() => { initializeBoard(); socket.emit('get_board_state'); }, 100);
-  setInterval(updateGameTimer, 1000);
+
+  clearInterval(timerInterval);
+  timerInterval = setInterval(updateGameTimer, 1000);
 });
 
 socket.on('opponent_joined', function(data) {
@@ -617,10 +872,17 @@ socket.on('opponent_joined', function(data) {
   document.getElementById('opponentName').textContent = opponentUsername || 'Unknown';
   document.getElementById('status').innerHTML = 'Game Started! White to move.';
   currentPlayerTurn = 0;
-  
+
+  if (data.clock) {
+    whiteClock = data.clock[0];
+    blackClock = data.clock[1];
+  }
+  updateClockDisplay();
+  startClockCountdown();
+
   if (!board) setTimeout(() => { initializeBoard(); updateBoard(data.board_fen, false); }, 100);
   else updateBoard(data.board_fen, false);
-  
+
   // Update captured pieces display if any
   if (data.captured_pieces) {
     capturedPieces = data.captured_pieces;
@@ -637,9 +899,19 @@ socket.on('move_made', function(data) {
   
   if (data.from && data.to) highlightLastMove(data.from, data.to);
   
+  // Save FEN before update so we can compute SAN notation
+  const prevFEN = currentFEN;
   updateBoard(data.board_fen);
   currentPlayerTurn = data.current_player;
-  
+
+  // Update clocks from authoritative server values and restart countdown
+  if (data.clock) {
+    whiteClock = data.clock[0];
+    blackClock = data.clock[1];
+    updateClockDisplay();
+    startClockCountdown();
+  }
+
   // Update captured pieces display using chessboard.js spare pieces
   if (data.captured_pieces) {
     capturedPieces = data.captured_pieces;
@@ -683,32 +955,44 @@ socket.on('move_made', function(data) {
 
   document.getElementById('status').innerHTML = `<span class="${statusClass}">${status}</span>`;
   
-  // Update move history with proper DOM manipulation
+  // Compute SAN notation from the position before the move was applied
+  let san = data.move;
+  try {
+    const tempChess = new Chess(prevFEN);
+    const moveObj = tempChess.move({ from: data.from, to: data.to, promotion: data.promotion || undefined });
+    if (moveObj) san = moveObj.san;
+  } catch(e) {}
+
+  // Update move history
+  // data.current_player is the NEXT player to move:
+  //   current_player === 1 (black next) → white just moved
+  //   current_player === 0 (white next) → black just moved
   const moveHistoryDiv = document.getElementById('moveHistory');
-  const moveCount = moveHistoryDiv.children.length;
-  const moveNumber = Math.floor(moveCount / 2) + 1;
-  const isWhiteMove = moveCount % 2 === 0;
-  
+  const isWhiteMove = (data.current_player === 1);
+
   if (isWhiteMove) {
-    // Create new row for white's move
+    const moveNumber = moveHistoryDiv.children.length + 1;
     const newRow = document.createElement('div');
     newRow.className = 'move-pair';
-    newRow.innerHTML = `
-      <span class="move-num">${moveNumber}.</span>
-      <span class="move-white">${data.move}</span>
-      <span class="move-black">-</span>
-    `;
+    const numSpan = document.createElement('span');
+    numSpan.className = 'move-num';
+    numSpan.textContent = moveNumber + '.';
+    const whiteSpan = document.createElement('span');
+    whiteSpan.className = 'move-white';
+    whiteSpan.textContent = san;
+    const blackSpan = document.createElement('span');
+    blackSpan.className = 'move-black';
+    blackSpan.textContent = '-';
+    newRow.appendChild(numSpan);
+    newRow.appendChild(whiteSpan);
+    newRow.appendChild(blackSpan);
     moveHistoryDiv.appendChild(newRow);
   } else {
     // Update existing row with black's move
     const lastRow = moveHistoryDiv.lastElementChild;
     if (lastRow) {
       const blackMove = lastRow.querySelector('.move-black');
-      if (blackMove) {
-        blackMove.textContent = data.move;
-        blackMove.classList.remove('move-black');
-        blackMove.classList.add('move-black', 'filled');
-      }
+      if (blackMove) blackMove.textContent = san;
     }
   }
   
@@ -734,6 +1018,17 @@ socket.on('board_state', function(data) {
     capturedPieces = data.captured_pieces;
     updateCapturedPiecesDisplay();
   }
+
+  // Update clocks from server (live-adjusted)
+  if (data.clock) {
+    whiteClock = data.clock[0];
+    blackClock = data.clock[1];
+    updateClockDisplay();
+    // Start countdown if both players are present (clock_started_at set)
+    if (data.usernames && data.usernames[0] && data.usernames[1]) {
+      startClockCountdown();
+    }
+  }
 });
 
 socket.on('game_reset', function(data) {
@@ -748,7 +1043,13 @@ socket.on('game_reset', function(data) {
   capturedPieces = { 'white': [], 'black': [] };
   drawOfferSent = false;
   closeDrawOfferDialog();
-  
+
+  // Reset clocks
+  whiteClock = data.clock ? data.clock[0] : 1200;
+  blackClock = data.clock ? data.clock[1] : 1200;
+  updateClockDisplay();
+  startClockCountdown();
+
   document.querySelectorAll('.highlight-last-move').forEach(el => el.classList.remove('highlight-last-move'));
   
   updateBoard(data.board_fen, false);
@@ -762,11 +1063,138 @@ socket.on('game_reset', function(data) {
 
 socket.on('opponent_left', function(data) {
   console.log('Opponent left:', data.message);
+  clearInterval(clockInterval);
+  clockInterval = null;
   showToast(data.message || 'Opponent left the game', 'warning');
   document.getElementById('status').innerHTML = data.message || 'Opponent left';
   drawOfferSent = false;
   closeDrawOfferDialog();
   updateUI('opponent-left');
+});
+
+socket.on('opponent_disconnected', function(data) {
+  clearInterval(clockInterval);
+  clockInterval = null;
+  clearInterval(disconnectCountdownInterval);
+
+  const existing = document.getElementById('disconnectDialog');
+  if (existing) existing.remove();
+
+  let countdown = data.reconnect_timeout || 60;
+
+  const dialog = document.createElement('div');
+  dialog.id = 'disconnectDialog';
+  dialog.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;justify-content:center;align-items:center;z-index:3000;';
+
+  const inner = document.createElement('div');
+  inner.style.cssText = 'background:white;padding:30px;border-radius:16px;text-align:center;max-width:400px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.4);';
+
+  const title = document.createElement('h3');
+  title.style.cssText = 'margin-bottom:15px;color:#333;';
+  title.textContent = 'Opponent Disconnected';
+
+  const msgLine = document.createElement('p');
+  msgLine.style.cssText = 'margin-bottom:10px;color:#666;';
+  msgLine.textContent = (data.username || 'Opponent') + ' has disconnected.';
+
+  const countdownLine = document.createElement('p');
+  countdownLine.style.cssText = 'margin-bottom:25px;color:#666;';
+  const countdownSpan = document.createElement('span');
+  countdownSpan.id = 'disconnectCountdown';
+  countdownSpan.textContent = countdown;
+  countdownLine.textContent = 'Waiting for reconnect... ';
+  countdownLine.appendChild(countdownSpan);
+  countdownLine.appendChild(document.createTextNode('s'));
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:15px;justify-content:center;';
+
+  const waitBtn = document.createElement('button');
+  waitBtn.textContent = 'Wait';
+  waitBtn.style.cssText = 'padding:12px 30px;background:#6366f1;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;';
+
+  const claimBtn = document.createElement('button');
+  claimBtn.textContent = 'Claim Win';
+  claimBtn.style.cssText = 'padding:12px 30px;background:#ef4444;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;';
+
+  btnRow.appendChild(waitBtn);
+  btnRow.appendChild(claimBtn);
+  inner.appendChild(title);
+  inner.appendChild(msgLine);
+  inner.appendChild(countdownLine);
+  inner.appendChild(btnRow);
+  dialog.appendChild(inner);
+  document.body.appendChild(dialog);
+
+  waitBtn.addEventListener('click', function() { dialog.remove(); });
+  claimBtn.addEventListener('click', function() {
+    dialog.remove();
+    clearInterval(disconnectCountdownInterval);
+    socket.emit('claim_win');
+  });
+
+  disconnectCountdownInterval = setInterval(function() {
+    countdown--;
+    const el = document.getElementById('disconnectCountdown');
+    if (el) el.textContent = countdown;
+    if (countdown <= 0) {
+      clearInterval(disconnectCountdownInterval);
+    }
+  }, 1000);
+});
+
+socket.on('opponent_reconnected', function(data) {
+  clearInterval(disconnectCountdownInterval);
+  const dialog = document.getElementById('disconnectDialog');
+  if (dialog) dialog.remove();
+  startClockCountdown();
+  showToast((data.username || 'Opponent') + ' reconnected!', 'success');
+});
+
+socket.on('reconnected', function(data) {
+  gameId = data.game_id;
+  playerColor = data.color;
+  playerIndex = data.player_index;
+  playerNumber = playerIndex + 1;
+  username = data.username;
+  opponentUsername = data.opponent_username;
+  currentPlayerTurn = data.current_player;
+  capturedPieces = data.captured_pieces || { white: [], black: [] };
+  isGameOver = false;
+  lastMove = null;
+
+  if (data.clock) {
+    whiteClock = data.clock[0];
+    blackClock = data.clock[1];
+  }
+
+  saveReconnectInfo();
+
+  document.getElementById('gameId').textContent = gameId.substring(0, 8) + '...';
+  document.getElementById('playerColor').textContent = playerColor.toUpperCase();
+  document.getElementById('opponentName').textContent = opponentUsername || 'Unknown';
+
+  updateUI('playing');
+
+  setTimeout(function() {
+    if (!board) initializeBoard();
+    updateBoard(data.board_fen, false);
+    updateCapturedPiecesDisplay();
+    updateClockDisplay();
+    startClockCountdown();
+    rebuildMoveHistory(data.moves_history || []);
+    const statusEl = document.getElementById('status');
+    if (statusEl) {
+      statusEl.textContent = (data.current_player === 0 ? 'White' : 'Black') + ' to move.';
+    }
+  }, 100);
+
+  showToast('Reconnected to game!', 'success');
+});
+
+socket.on('reconnect_failed', function(data) {
+  clearReconnectInfo();
+  showToast(data.message || 'Failed to reconnect', 'error');
 });
 
 socket.on('error', function(data) {
@@ -791,9 +1219,37 @@ socket.on('error', function(data) {
 
 socket.on('game_ended', function(data) {
   isGameOver = true;
+  clearInterval(clockInterval);
+  clockInterval = null;
+  clearInterval(disconnectCountdownInterval);
   drawOfferSent = false;
   closeDrawOfferDialog();
-  
+  clearReconnectInfo();
+
+  if (data.result === 'forfeit') {
+    if (data.winner === username) {
+      showToast('You won! Opponent forfeited.', 'success');
+      document.getElementById('status').innerHTML = '<span class="status-win">You won! Opponent disconnected.</span>';
+    } else {
+      showToast('You forfeited the game.', 'error');
+      document.getElementById('status').innerHTML = '<span class="status-lose">You disconnected. Opponent wins!</span>';
+    }
+    document.getElementById('resetBtn').style.display = 'block';
+    return;
+  }
+
+  if (data.result === 'timeout') {
+    if (data.winner === username) {
+      showToast('You won! Opponent ran out of time.', 'success');
+      document.getElementById('status').textContent = `You won! ${data.loser} ran out of time.`;
+    } else {
+      showToast('You lost on time.', 'error');
+      document.getElementById('status').textContent = `Time's up! ${data.winner} wins.`;
+    }
+    document.getElementById('resetBtn').style.display = 'block';
+    return;
+  }
+
   if (data.result === 'draw') {
     showToast('Game ended in a draw!', 'info');
     document.getElementById('status').innerHTML = `<span class="status-draw">${data.message}</span>`;
@@ -833,7 +1289,7 @@ socket.on('draw_offered', function(data) {
           <button id="declineDrawBtn" style="padding:12px 30px;background:#ef4444;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;">✗ Decline</button>
         </div>
       ` : `
-        <button onclick="closeDrawOfferDialog()" style="padding:12px 30px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;">Cancel Offer</button>
+        <button onclick="cancelDrawOffer()" style="padding:12px 30px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;">Cancel Offer</button>
       `}
     </div>
   `;
@@ -849,9 +1305,9 @@ socket.on('draw_offered', function(data) {
     });
     
     document.getElementById('declineDrawBtn').addEventListener('click', function() {
+      socket.emit('decline_draw');
       closeDrawOfferDialog();
       showToast('Draw declined', 'info');
-      // Optionally notify the offerer that their offer was declined
     });
   }
 });
@@ -860,6 +1316,20 @@ function closeDrawOfferDialog() {
   const dialog = document.getElementById('drawOfferDialog');
   if (dialog) dialog.remove();
 }
+
+function cancelDrawOffer() {
+  // Notify server/opponent that the offer is being withdrawn
+  socket.emit('decline_draw');
+  drawOfferSent = false;
+  closeDrawOfferDialog();
+  showToast('Draw offer cancelled', 'info', 2000);
+}
+
+socket.on('draw_declined', function(data) {
+  drawOfferSent = false;
+  closeDrawOfferDialog();
+  showToast(`${data.declined_by} declined the draw offer`, 'info');
+});
 
 socket.on('left_game', function(data) {
   showToast(data.message, 'info');
@@ -930,8 +1400,20 @@ function destroyBoard() {
 
 function resetGame() {
   console.log('Resetting game...');
+  clearReconnectInfo();
+  clearInterval(disconnectCountdownInterval);
+  disconnectCountdownInterval = null;
+  clearSelection();
+  const disconnectDialog = document.getElementById('disconnectDialog');
+  if (disconnectDialog) disconnectDialog.remove();
   if (gameId) socket.emit('leave_game');
   
+  clearInterval(timerInterval);
+  timerInterval = null;
+  clearInterval(clockInterval);
+  clockInterval = null;
+  whiteClock = 1200;
+  blackClock = 1200;
   gameId = null;
   playerNumber = null;
   playerColor = null;
@@ -963,7 +1445,8 @@ function resetGame() {
   document.getElementById('status').innerHTML = 'Connecting...';
   document.getElementById('resetBtn').style.display = 'none';
   document.getElementById('gameTimer').textContent = '00:00';
-  
+  updateClockDisplay();
+
   // Clear captured pieces display
   clearCapturedPieces();
   capturedPieces = { 'white': [], 'black': [] };
@@ -1021,7 +1504,7 @@ function displayLeaderboardModal(leaderboard) {
   dialog.id = 'leaderboardDialog';
   dialog.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:2000;';
   
-  const players = Object.entries(leaderboard);
+  const players = Object.entries(leaderboard).sort((a, b) => (b[1].wins || 0) - (a[1].wins || 0));
   let leaderboardHTML = '';
   
   if (players.length === 0) {
@@ -1031,13 +1514,16 @@ function displayLeaderboardModal(leaderboard) {
     players.forEach(function(player, index) {
       const name = player[0];
       const stats = player[1];
-      const totalGames = stats.total_games || (stats.wins + stats.losses) || 1;
-      const winRate = totalGames > 0 ? ((stats.wins / totalGames) * 100).toFixed(1) : 0;
+      const wins = stats.wins || 0;
+      const losses = stats.losses || 0;
+      const draws = stats.draws || 0;
+      const totalGames = stats.total_games || (wins + losses + draws) || 1;
+      const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : 0;
       const bgColor = index % 2 === 0 ? '#f8f8f8' : 'white';
       const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '#' + (index + 1);
-      rowsHTML += `<tr style="background:${bgColor};"><td style="padding:12px;border-bottom:1px solid #ddd;font-weight:bold;color:#667eea;">${medal}</td><td style="padding:12px;border-bottom:1px solid #ddd;">${name}</td><td style="padding:12px;border-bottom:1px solid #ddd;text-align:center;color:#27ae60;font-weight:600;">${stats.wins || 0}</td><td style="padding:12px;border-bottom:1px solid #ddd;text-align:center;color:#e74c3c;">${stats.losses || 0}</td><td style="padding:12px;border-bottom:1px solid #ddd;text-align:center;font-weight:600;">${winRate}%</td></tr>`;
+      rowsHTML += `<tr style="background:${bgColor};"><td style="padding:12px;border-bottom:1px solid #ddd;font-weight:bold;color:#667eea;">${medal}</td><td style="padding:12px;border-bottom:1px solid #ddd;">${name}</td><td style="padding:12px;border-bottom:1px solid #ddd;text-align:center;color:#27ae60;font-weight:600;">${wins}</td><td style="padding:12px;border-bottom:1px solid #ddd;text-align:center;color:#9b59b6;font-weight:600;">${draws}</td><td style="padding:12px;border-bottom:1px solid #ddd;text-align:center;color:#e74c3c;">${losses}</td><td style="padding:12px;border-bottom:1px solid #ddd;text-align:center;font-weight:600;">${winRate}%</td></tr>`;
     });
-    leaderboardHTML = '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#667eea;color:white;"><th style="padding:12px;text-align:left;border-radius:8px 0 0 0;">Rank</th><th style="padding:12px;text-align:left;">Player</th><th style="padding:12px;text-align:center;">Wins</th><th style="padding:12px;text-align:center;">Losses</th><th style="padding:12px;text-align:center;border-radius:0 8px 0 0;">Win Rate</th></tr></thead><tbody>' + rowsHTML + '</tbody></table>';
+    leaderboardHTML = '<table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#667eea;color:white;"><th style="padding:12px;text-align:left;border-radius:8px 0 0 0;">Rank</th><th style="padding:12px;text-align:left;">Player</th><th style="padding:12px;text-align:center;">Wins</th><th style="padding:12px;text-align:center;">Draws</th><th style="padding:12px;text-align:center;">Losses</th><th style="padding:12px;text-align:center;border-radius:0 8px 0 0;">Win Rate</th></tr></thead><tbody>' + rowsHTML + '</tbody></table>';
   }
   
   dialog.innerHTML = '<div style="background:white;padding:30px;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.3);max-width:600px;width:90%;max-height:80vh;overflow-y:auto;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 style="color:#333;margin:0;">Leaderboard</h2><button onclick="closeLeaderboardDialog()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#999;">&times;</button></div>' + leaderboardHTML + '</div>';
@@ -1054,6 +1540,7 @@ function closeLeaderboardDialog() {
 document.addEventListener('DOMContentLoaded', function() {
   console.log('DOM loaded');
   checkUrlForInvite();
+  checkForReconnect();
   
   let checks = 0;
   const maxChecks = 100;

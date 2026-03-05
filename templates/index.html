@@ -70,25 +70,36 @@
             </div>
             
             <div class="game-content">
-                <div class="board-with-captured">
-                    <div class="captured-pieces-left">
-                        <div class="captured-section captured-by-white">
-                            <span class="captured-label">You captured</span>
-                            <div id="captured-by-white" class="captured-pieces-row"></div>
-                        </div>
+                <div class="board-area">
+                    <!-- Pieces opponent took from you -->
+                    <div class="player-strip opponent-strip">
+                        <span class="strip-label">Opp. took</span>
+                        <div class="strip-captures" id="opponent-captures"></div>
                     </div>
+
                     <div class="board-container">
                         <div id="board"></div>
                     </div>
-                    <div class="captured-pieces-right">
-                        <div class="captured-section captured-by-black">
-                            <span class="captured-label">Opponent captured</span>
-                            <div id="captured-by-black" class="captured-pieces-row"></div>
-                        </div>
+
+                    <!-- Pieces you took from opponent -->
+                    <div class="player-strip your-strip">
+                        <span class="strip-label">You took</span>
+                        <div class="strip-captures" id="your-captures"></div>
                     </div>
                 </div>
                 
                 <div class="game-panel">
+                    <div class="clocks-box">
+                        <div id="clock-black" class="clock-display clock-inactive">
+                            <span class="clock-label">⬛ Black</span>
+                            <span class="clock-time" id="black-time">20:00</span>
+                        </div>
+                        <div id="clock-white" class="clock-display clock-active">
+                            <span class="clock-label">⬜ White</span>
+                            <span class="clock-time" id="white-time">20:00</span>
+                        </div>
+                    </div>
+
                     <div class="status-box">
                         <p id="status" class="status">Connecting...</p>
                     </div>
