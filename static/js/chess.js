@@ -236,7 +236,10 @@ function checkUrlForInvite() {
   const urlParams = new URLSearchParams(window.location.search);
   const inviteGameId = urlParams.get('game');
   if (inviteGameId) {
-    document.getElementById('joinGameId').value = inviteGameId;
+    const code = inviteGameId.toUpperCase();
+    document.getElementById('quickJoinCode').textContent = code;
+    updateUI('quick-join');
+    setTimeout(() => document.getElementById('quickJoinUsername').focus(), 100);
     return true;
   }
   return false;
@@ -825,17 +828,16 @@ socket.on('game_created', function(data) {
   isGameOver = false;
   lastMove = null;
   gameStartTime = Date.now();
-  
+
   console.log('Game created:', gameId);
   saveReconnectInfo();
 
-  document.getElementById('gameId').textContent = gameId.substring(0, 8) + '...';
+  document.getElementById('gameId').textContent = gameId;
   document.getElementById('playerColor').textContent = playerColor.toUpperCase();
-  document.getElementById('status').innerHTML = '<span class="status-waiting">Waiting for opponent...</span>';
+  document.getElementById('status').textContent = 'Waiting for opponent...';
+  document.getElementById('roomCodeDisplay').textContent = gameId;
 
-  const shareableLink = window.location.origin + window.location.pathname + '?game=' + gameId;
-  updateUI('waiting');
-  showShareableLink(shareableLink);
+  updateUI('waiting-room');
 
   clearInterval(timerInterval);
   timerInterval = setInterval(updateGameTimer, 1000);
@@ -870,7 +872,8 @@ socket.on('opponent_joined', function(data) {
   console.log('Opponent joined');
   opponentUsername = data.opponent_username;
   document.getElementById('opponentName').textContent = opponentUsername || 'Unknown';
-  document.getElementById('status').innerHTML = 'Game Started! White to move.';
+  document.getElementById('status').textContent = 'Game Started! White to move.';
+  updateUI('playing');
   currentPlayerTurn = 0;
 
   if (data.clock) {
@@ -1337,17 +1340,25 @@ socket.on('left_game', function(data) {
 
 // UI Functions
 function updateUI(state) {
-  const menuContainer = document.getElementById('menuContainer');
+  const landingContainer = document.getElementById('landingContainer');
+  const waitingRoomContainer = document.getElementById('waitingRoomContainer');
+  const quickJoinContainer = document.getElementById('quickJoinContainer');
   const gameContainer = document.getElementById('gameContainer');
-  
-  if (state === 'menu') {
-    menuContainer.style.display = 'flex';
-    gameContainer.style.display = 'none';
-  } else if (state === 'waiting' || state === 'playing') {
-    menuContainer.style.display = 'none';
+
+  landingContainer.style.display = 'none';
+  waitingRoomContainer.style.display = 'none';
+  quickJoinContainer.style.display = 'none';
+  gameContainer.style.display = 'none';
+
+  if (state === 'landing') {
+    landingContainer.style.display = 'flex';
+  } else if (state === 'waiting-room') {
+    waitingRoomContainer.style.display = 'flex';
+  } else if (state === 'quick-join') {
+    quickJoinContainer.style.display = 'flex';
+  } else if (state === 'playing') {
     gameContainer.style.display = 'flex';
   } else if (state === 'opponent-left') {
-    menuContainer.style.display = 'none';
     gameContainer.style.display = 'flex';
     document.getElementById('resetBtn').style.display = 'block';
   }
@@ -1372,17 +1383,89 @@ function joinGame() {
   const usernameInput = document.getElementById('joinUsername');
   const gameIdInput = document.getElementById('joinGameId');
   let name = usernameInput.value.trim() || 'Player 2';
-  const gameIdVal = gameIdInput.value.trim();
-  
+  const gameIdVal = gameIdInput.value.trim().toUpperCase();
+
   if (!gameIdVal) {
-    showToast('Please enter a game ID', 'warning');
+    showToast('Please enter a room code', 'warning');
     return;
   }
   if (name.length > 20) name = name.substring(0, 20);
-  
+
   username = name;
   console.log('Joining game:', gameIdVal, 'as', username);
   socket.emit('join_game', { game_id: gameIdVal, username: username });
+}
+
+function quickJoin() {
+  const nameInput = document.getElementById('quickJoinUsername');
+  const code = document.getElementById('quickJoinCode').textContent.trim();
+  let name = nameInput.value.trim() || 'Player 2';
+  if (!code) { showToast('No room code found', 'error'); return; }
+  if (name.length > 20) name = name.substring(0, 20);
+  username = name;
+  socket.emit('join_game', { game_id: code, username: username });
+}
+
+function goToLanding() {
+  window.history.replaceState({}, document.title, window.location.pathname);
+  updateUI('landing');
+}
+
+function cancelWaiting() {
+  if (gameId) socket.emit('leave_game');
+  clearReconnectInfo();
+  clearInterval(timerInterval);
+  timerInterval = null;
+  gameId = null;
+  playerColor = null;
+  playerIndex = null;
+  isGameOver = false;
+  updateUI('landing');
+}
+
+function copyRoomCode() {
+  const code = document.getElementById('roomCodeDisplay').textContent.trim();
+  if (!code || code === '------') return;
+  copyToClipboard(code, 'Room code copied!');
+}
+
+function shareRoomLink() {
+  if (!gameId) return;
+  const link = window.location.origin + window.location.pathname + '?game=' + gameId;
+  if (navigator.share) {
+    navigator.share({ title: 'Join my Chess Game!', text: 'Play chess with me!', url: link })
+      .catch(() => copyToClipboard(link, 'Link copied!'));
+  } else {
+    copyToClipboard(link, 'Link copied!');
+  }
+}
+
+function copyToClipboard(text, successMsg) {
+  successMsg = successMsg || 'Copied!';
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(successMsg, 'success', 2500);
+    }).catch(() => fallbackCopy(text, successMsg));
+  } else {
+    fallbackCopy(text, successMsg);
+  }
+}
+
+function fallbackCopy(text, successMsg) {
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+  try {
+    const ok = document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast(ok ? (successMsg || 'Copied!') : 'Copy failed — try manually: ' + text, ok ? 'success' : 'warning', ok ? 2500 : 6000);
+  } catch (e) {
+    document.body.removeChild(el);
+    showToast('Copy failed — try manually: ' + text, 'warning', 6000);
+  }
 }
 
 // Best practice: destroy board properly to prevent memory leaks
@@ -1453,7 +1536,7 @@ function resetGame() {
   drawOfferSent = false;
   closeDrawOfferDialog();
   
-  updateUI('menu');
+  updateUI('landing');
 }
 
 // Track draw offer state
@@ -1539,7 +1622,6 @@ function closeLeaderboardDialog() {
 // Initialize UI on load
 document.addEventListener('DOMContentLoaded', function() {
   console.log('DOM loaded');
-  checkUrlForInvite();
   checkForReconnect();
   
   let checks = 0;
@@ -1553,12 +1635,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (hasChessBoard && hasChess) {
       console.log('Libraries loaded');
       clearInterval(checkLibraries);
-      updateUI('menu');
+      if (!checkUrlForInvite()) updateUI('landing');
     } else if (checks >= maxChecks) {
       console.error('Libraries failed to load');
       clearInterval(checkLibraries);
-      const menuContainer = document.getElementById('menuContainer');
-      menuContainer.innerHTML = '<div class="error-container"><h2>Library Loading Error</h2><p>Failed to load chess libraries.</p><p>Please refresh the page.</p><button onclick="location.reload()" class="btn btn-primary" style="margin-top:20px;">Reload Page</button></div>';
+      const landing = document.getElementById('landingContainer');
+      landing.style.display = 'flex';
+      showToast('Failed to load chess libraries. Please refresh.', 'error', 8000);
     }
   }, 100);
 });

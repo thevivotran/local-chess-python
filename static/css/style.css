@@ -50,120 +50,120 @@ body {
     max-width: 1200px;
 }
 
-/* Menu Styles */
-.menu-container {
+/* Landing Page */
+.landing-container {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
+    justify-content: center;
     min-height: 100vh;
+    gap: 40px;
+    padding: 40px 20px;
 }
 
-.error-container {
-    background: white;
-    border-radius: 12px;
-    padding: 40px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    max-width: 500px;
-    width: 100%;
+.landing-hero {
     text-align: center;
 }
 
-.error-container h2 {
-    color: #e74c3c;
-    margin-bottom: 20px;
-    font-size: 1.8em;
+.landing-piece {
+    font-size: 4em;
+    line-height: 1;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
 }
 
-.error-container p {
-    color: #666;
-    margin-bottom: 15px;
-    font-size: 1em;
+.landing-title {
+    font-size: 2.8em;
+    color: white;
+    font-weight: 700;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.error-container ul {
-    text-align: left;
-    margin-left: 20px;
-    margin-bottom: 20px;
-    color: #666;
-}
-
-.error-container li {
-    margin-bottom: 10px;
-}
-
-.menu {
-    background: white;
-    border-radius: 12px;
-    padding: 40px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    max-width: 500px;
-    width: 100%;
-}
-
-.menu h1 {
-    text-align: center;
-    color: #333;
-    margin-bottom: 10px;
-    font-size: 2.5em;
-}
-
-.menu .subtitle {
-    text-align: center;
-    color: #666;
-    margin-bottom: 30px;
+.landing-subtitle {
+    color: rgba(255, 255, 255, 0.75);
     font-size: 1.1em;
 }
 
-.menu-content {
+.landing-cards {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    max-width: 720px;
+}
+
+.landing-card {
+    background: white;
+    border-radius: 16px;
+    padding: 36px 32px;
+    flex: 1 1 280px;
+    max-width: 320px;
     display: flex;
     flex-direction: column;
-    gap: 25px;
+    gap: 14px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.menu-section {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+.landing-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
 }
 
-.menu-section h2 {
-    color: #333;
-    font-size: 1.3em;
-    margin-bottom: 5px;
-}
-
-.divider {
+.landing-card-icon {
+    font-size: 2em;
     text-align: center;
-    color: #999;
-    font-weight: bold;
-    margin: 10px 0;
-    position: relative;
 }
 
-.divider::before,
-.divider::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    width: 45%;
-    height: 1px;
-    background: #ddd;
+.landing-card h2 {
+    color: #1f2937;
+    font-size: 1.4em;
+    text-align: center;
+    margin: 0;
 }
 
-.divider::before {
-    left: 0;
+.card-desc {
+    color: #6b7280;
+    font-size: 0.9em;
+    text-align: center;
+    margin-bottom: 4px;
 }
 
-.divider::after {
-    right: 0;
+.btn-full {
+    width: 100%;
 }
 
+.landing-footer {
+    text-align: center;
+}
+
+.btn-ghost {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    font-size: 0.95em;
+    padding: 8px 16px;
+    border-radius: 6px;
+    transition: color 0.2s, background 0.2s;
+}
+
+.btn-ghost:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* Input fields */
 .input-field {
     padding: 12px;
     border: 2px solid #ddd;
     border-radius: 6px;
     font-size: 1em;
     transition: border-color 0.3s;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .input-field:focus {
@@ -171,10 +171,169 @@ body {
     border-color: #667eea;
 }
 
-.info-text {
-    color: #999;
-    font-size: 0.9em;
+.input-code {
     text-align: center;
+    font-size: 1.5em !important;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    padding: 14px 12px !important;
+    font-family: monospace;
+}
+
+/* Waiting Room */
+.wr-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+}
+
+.wr-card {
+    background: white;
+    border-radius: 20px;
+    padding: 48px 40px;
+    max-width: 440px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.wr-icon {
+    font-size: 3em;
+}
+
+.wr-title {
+    font-size: 1.8em;
+    color: #1f2937;
+    font-weight: 700;
+    margin: 0;
+}
+
+.wr-desc {
+    color: #6b7280;
+    font-size: 1em;
+    margin: 0;
+}
+
+.wr-code-display {
+    font-size: 3em;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    font-family: monospace;
+    color: #6366f1;
+    background: #eef2ff;
+    padding: 20px 32px;
+    border-radius: 16px;
+    border: 3px solid #c7d2fe;
+    cursor: pointer;
+    user-select: all;
+    transition: background 0.2s;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.wr-code-display:hover {
+    background: #e0e7ff;
+}
+
+.wr-actions {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+}
+
+.wr-actions .btn {
+    flex: 1;
+    width: auto;
+}
+
+.wr-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #6b7280;
+    font-size: 0.9em;
+}
+
+.wr-spinner {
+    width: 18px;
+    height: 18px;
+    border: 3px solid #e5e7eb;
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.wr-cancel {
+    color: #9ca3af !important;
+    font-size: 0.85em;
+}
+
+/* Quick Join */
+.qj-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 40px 20px;
+}
+
+.qj-card {
+    background: white;
+    border-radius: 20px;
+    padding: 48px 40px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.qj-icon {
+    font-size: 3em;
+}
+
+.qj-title {
+    font-size: 1.8em;
+    color: #1f2937;
+    font-weight: 700;
+    margin: 0;
+}
+
+.qj-desc {
+    color: #6b7280;
+    font-size: 1em;
+    margin: 0;
+}
+
+.qj-code-badge {
+    font-size: 2em;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    font-family: monospace;
+    color: #6366f1;
+    background: #eef2ff;
+    padding: 14px 28px;
+    border-radius: 12px;
+    border: 2px solid #c7d2fe;
+}
+
+.qj-card .input-field {
+    width: 100%;
 }
 
 /* Button Styles */

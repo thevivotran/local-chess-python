@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import chess
-import uuid
+import random
 import os
 import json
 from datetime import datetime, timedelta
@@ -14,6 +14,17 @@ app.config["SECRET_KEY"] = os.getenv(
     "SECRET_KEY", "your-secret-key-change-in-production"
 )
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Room code generation — short, human-readable, avoids confusable chars
+ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def generate_room_code():
+    while True:
+        code = "".join(random.choices(ROOM_CODE_CHARS, k=6))
+        if code not in games:
+            return code
+
 
 # Store active games: {game_id: {board, players, current_player}}
 games = {}
@@ -520,7 +531,7 @@ def handle_create_game(data):
     if not username:
         username = "Player 1"
 
-    game_id = str(uuid.uuid4())
+    game_id = generate_room_code()
 
     games[game_id] = {
         "board": chess.Board(),

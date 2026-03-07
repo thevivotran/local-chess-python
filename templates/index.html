@@ -9,38 +9,67 @@
 </head>
 <body>
     <div class="container">
-        <!-- Menu Container -->
-        <div id="menuContainer" class="menu-container">
-            <div class="menu">
-                <h1>♟ Local Chess ♟</h1>
-                <p class="subtitle">Play chess with friends on the same network</p>
-                
-                <div class="menu-content">
-                    <div class="menu-section">
-                        <h2>Create New Game</h2>
-                        <input type="text" id="createUsername" class="input-field" placeholder="Your Username">
-                        <button id="createBtn" class="btn btn-primary" onclick="createGame()">Create Game</button>
-                        <p class="info-text">You'll get a Game ID to share with your friend</p>
-                    </div>
-                    
-                    <div class="divider">OR</div>
-                    
-                    <div class="menu-section">
-                        <h2>Join Existing Game</h2>
-                        <input type="text" id="joinUsername" class="input-field" placeholder="Your Username">
-                        <input type="text" id="joinGameId" class="input-field" placeholder="Enter Game ID">
-                        <button id="joinBtn" class="btn btn-secondary" onclick="joinGame()">Join Game</button>
-                        <p class="info-text">Ask your friend for the Game ID</p>
-                    </div>
-                    
-                    <div class="divider">OR</div>
-                    
-                    <div class="menu-section">
-                        <h2>Leaderboard</h2>
-                        <button id="leaderboardBtn" class="btn btn-secondary" onclick="showLeaderboard()">View Rankings</button>
-                        <p class="info-text">Check win/loss records</p>
-                    </div>
+        <!-- Landing Container -->
+        <div id="landingContainer" class="landing-container">
+            <div class="landing-hero">
+                <div class="landing-piece">♟</div>
+                <h1 class="landing-title">Local Chess</h1>
+                <p class="landing-subtitle">Play chess with friends on your network</p>
+            </div>
+
+            <div class="landing-cards">
+                <div class="landing-card">
+                    <div class="landing-card-icon">🏠</div>
+                    <h2>Host a Game</h2>
+                    <p class="card-desc">Create a room and share the code with a friend</p>
+                    <input type="text" id="createUsername" class="input-field" placeholder="Your name" maxlength="20" autocomplete="off">
+                    <button class="btn btn-primary btn-full" onclick="createGame()">Create Room</button>
                 </div>
+
+                <div class="landing-card">
+                    <div class="landing-card-icon">🚪</div>
+                    <h2>Join a Game</h2>
+                    <p class="card-desc">Enter the 6-letter room code from your friend</p>
+                    <input type="text" id="joinUsername" class="input-field" placeholder="Your name" maxlength="20" autocomplete="off">
+                    <input type="text" id="joinGameId" class="input-field input-code" placeholder="Room code" maxlength="6" autocomplete="off" oninput="this.value = this.value.toUpperCase()">
+                    <button class="btn btn-secondary btn-full" onclick="joinGame()">Join Room</button>
+                </div>
+            </div>
+
+            <div class="landing-footer">
+                <button class="btn-ghost" onclick="showLeaderboard()">🏆 Leaderboard</button>
+            </div>
+        </div>
+
+        <!-- Waiting Room (shown after creating a game, before opponent joins) -->
+        <div id="waitingRoomContainer" class="wr-container" style="display:none;">
+            <div class="wr-card">
+                <div class="wr-icon">♟</div>
+                <h2 class="wr-title">Room Created!</h2>
+                <p class="wr-desc">Share this code with your friend</p>
+                <div class="wr-code-display" id="roomCodeDisplay" onclick="copyRoomCode()">------</div>
+                <div class="wr-actions">
+                    <button class="btn btn-secondary" onclick="copyRoomCode()">📋 Copy Code</button>
+                    <button class="btn btn-primary" onclick="shareRoomLink()">📤 Share Link</button>
+                </div>
+                <div class="wr-status">
+                    <div class="wr-spinner"></div>
+                    <span id="waitingStatusText">Waiting for opponent to join...</span>
+                </div>
+                <button class="btn-ghost wr-cancel" onclick="cancelWaiting()">← Leave Room</button>
+            </div>
+        </div>
+
+        <!-- Quick Join (shown when arriving via an invite link) -->
+        <div id="quickJoinContainer" class="qj-container" style="display:none;">
+            <div class="qj-card">
+                <div class="qj-icon">♟</div>
+                <h2 class="qj-title">You're invited!</h2>
+                <p class="qj-desc">Enter your name to join the game</p>
+                <div class="qj-code-badge" id="quickJoinCode">------</div>
+                <input type="text" id="quickJoinUsername" class="input-field" placeholder="Your name" maxlength="20" autocomplete="off">
+                <button class="btn btn-primary btn-full" onclick="quickJoin()">Join Game</button>
+                <button class="btn-ghost" onclick="goToLanding()" style="margin-top:8px;">← Back to Home</button>
             </div>
         </div>
         
